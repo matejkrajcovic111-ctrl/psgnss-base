@@ -2,7 +2,7 @@
 #
 # PSGNSS_base installer.
 #
-#   curl -fsSL https://raw.githubusercontent.com/OWNER/PSGNSS_base/main/install.sh | sudo bash
+#   curl -fsSL https://raw.githubusercontent.com/matejkrajcovic111-ctrl/psgnss-base/main/install.sh | sudo bash
 #
 # or, from a checkout:
 #
@@ -24,7 +24,7 @@
 
 set -euo pipefail
 
-REPO="${PSGNSS_REPO:-https://github.com/OWNER/PSGNSS_base}"
+REPO="${PSGNSS_REPO:-https://github.com/matejkrajcovic111-ctrl/psgnss-base}"
 REF="${PSGNSS_REF:-main}"
 ROOT="${PSGNSS_ROOT:-}"
 FORCE="${PSGNSS_FORCE:-}"
@@ -124,10 +124,6 @@ else
   say "Downloading the source"
   SRC="$WORKDIR/src"
   mkdir -p "$SRC"
-  case "$REPO" in
-    *OWNER*) die "this script has no repository to download from yet.
-  Set PSGNSS_REPO to the GitHub URL, or run it from inside a checkout." ;;
-  esac
   tarball="${REPO%.git}/archive/refs/heads/${REF}.tar.gz"
   info "$tarball"
   curl -fsSL "$tarball" | tar -xz -C "$SRC" --strip-components=1 ||

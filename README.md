@@ -15,11 +15,8 @@ telemetry, the web UI.
 ## Install
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/OWNER/psgnss-base/main/install.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/matejkrajcovic111-ctrl/psgnss-base/main/install.sh | sudo bash
 ```
-
-> `OWNER` is a placeholder until this repository is published. The script won't
-> guess at a URL, so for now clone the repo and run `sudo ./install.sh`.
 
 That's the whole thing. It checks the machine, builds the daemon (fetching a
 pinned Go toolchain if there isn't one, and checking its published SHA-256

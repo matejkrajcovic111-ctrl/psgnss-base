@@ -1,6 +1,6 @@
 [Unit]
 Description=PSGNSS_base GNSS base station suite
-Documentation=https://github.com/OWNER/psgnss-base
+Documentation=https://github.com/matejkrajcovic111-ctrl/psgnss-base
 After=network-online.target
 Wants=network-online.target
 # The hub owns the receiver. Nothing else may hold the serial port.

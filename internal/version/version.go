@@ -10,6 +10,6 @@ var (
 // appears in places a person reads when something has gone wrong -- the
 // Documentation= line of the systemd unit, which `systemctl status` prints --
 // and those must not be allowed to drift apart or point somewhere stale.
-const ProjectURL = "https://github.com/OWNER/psgnss-base"
+const ProjectURL = "https://github.com/matejkrajcovic111-ctrl/psgnss-base"
 
 func String() string { return Version + " (" + Commit + ")" }
