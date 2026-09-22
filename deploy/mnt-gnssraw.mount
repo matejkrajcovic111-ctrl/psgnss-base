@@ -1,0 +1,30 @@
+# SMB mount for the raw archive.
+#
+# Written for you by `psgnssd --setup`. This copy is the reference for a hand
+# install: the filename must be the systemd-escaped mount path
+# (/mnt/gnssraw -> mnt-gnssraw.mount) or systemd never reads it.
+#
+# Credentials live in a root-only file, never in this unit:
+#   /etc/psgnss/secrets/smb.cred, mode 0600, containing
+#     username=<user>
+#     password=<pass>
+#
+# The archive writer spools locally and only flushes completed files here, so
+# an outage of this mount costs disk space rather than data. That is why
+# nofail and soft are used: a wedged share must never block boot or hang the
+# process that owns the receiver.
+
+[Unit]
+Description=GNSS raw archive (SMB)
+After=network-online.target
+Wants=network-online.target
+
+[Mount]
+What=//nas.example.lan/GNSSraw
+Where=/mnt/gnssraw
+Type=cifs
+Options=credentials=/etc/psgnss/secrets/smb.cred,vers=3.0,iocharset=utf8,nofail,soft,uid=0,gid=0,file_mode=0640,dir_mode=0750,_netdev
+TimeoutSec=30
+
+[Install]
+WantedBy=multi-user.target

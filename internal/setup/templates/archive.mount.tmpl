@@ -1,0 +1,27 @@
+# SMB mount for the raw archive, written by the PSGNSS installer.
+#
+# The unit name must match the mount path: {{ .ArchiveMount }} is
+# {{ .ArchiveMountUnit }} and systemd accepts no other name.
+#
+# Credentials live in a root-only file, never in this unit:
+#   {{ .SMBCred }}, mode 0600
+#
+# The archive writer spools locally and only flushes completed files here, so
+# an outage of this mount costs disk space rather than data. That is why
+# nofail and soft are used: a wedged share must never block boot or hang the
+# process that owns the receiver.
+
+[Unit]
+Description=GNSS raw archive (SMB)
+After=network-online.target
+Wants=network-online.target
+
+[Mount]
+What={{ .ArchiveUNC }}
+Where={{ .ArchiveMount }}
+Type=cifs
+Options=credentials={{ .SMBCred }},vers=3.0,iocharset=utf8,nofail,soft,uid=0,gid=0,file_mode=0640,dir_mode=0750,_netdev
+TimeoutSec=30
+
+[Install]
+WantedBy=multi-user.target

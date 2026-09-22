@@ -1,0 +1,9 @@
+#Type Path                        Mode UID  GID  Age Argument
+d     /etc/psgnss                 0750 root root -   -
+d     /etc/psgnss/secrets         0700 root root -   -
+d     /var/lib/psgnss             0750 root root -   -
+d     /var/lib/psgnss/spool       0750 root root -   -
+d     /var/lib/psgnss/rinex       0750 root root -   -
+d     /var/log/psgnss             0750 root root -   -
+d     /opt/psgnss                 0755 root root -   -
+d     /opt/psgnss/bin             0755 root root -   -

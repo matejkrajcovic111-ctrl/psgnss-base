@@ -1,0 +1,217 @@
+# PSGNSS_base configuration
+#
+# Reference for every setting, with the reasoning behind the defaults.
+#
+# `psgnssd --setup` writes a working file from an interview and you will not
+# normally need to start from this one. Copy it to /etc/psgnss/psgnss.toml if
+# you would rather configure by hand.
+#
+# Secrets do NOT live here -- see [security].key_file. This file is safe to
+# commit; the deployed one is not.
+
+[station]
+name        = "MyStation"
+# Reference station ID broadcast in RTCM 1005/1006/1008/1033.
+station_id  = 1
+# Antenna descriptor broadcast in message 1008. Do not "improve" this:
+# the surveyed coordinates were derived against it.
+antenna     = "ADVNULLANTENNA"
+receiver    = ""              # message 1033 receiver descriptor; blank = omit
+
+# Broadcast base position. Authoritative source for RTCM 1005/1006.
+# The receiver stores this itself in CFG-TMODE; PSGNSS writes these values to
+# the receiver so its native output carries them and nothing has to be
+# re-encoded. LLH is used because it is exactly representable.
+[station.position]
+mode        = "fixed"         # fixed | survey_in
+format      = "llh"           # llh | ecef  -- llh has zero representation error
+latitude    = 0.00000000      # degrees, 8 dp
+longitude   = 0.00000000      # degrees, 8 dp
+height      = 0.000           # metres, ellipsoidal
+# Antenna reference point offset, metres. Zero unless you have a calibration
+# that says otherwise.
+enu_offset  = [0.0, 0.0, 0.0]
+
+[receiver]
+# Always address the device by its stable by-id symlink, never /dev/ttyACM0 --
+# that name is assignment-order dependent.
+device      = "/dev/serial/by-id/usb-u-blox_AG_-_www.u-blox.com_u-blox_GNSS_receiver-if00"
+baud        = 460800
+profile     = "simplertk4-optimum"
+model       = "ZED-X20P"
+# Refuse to start if the receiver reports a different model.
+verify_model = true
+# Seconds before an unconfirmed config write is rolled back. A bad write can
+# never orphan the stream.
+revert_timeout = 60
+
+[hub]
+# The hub owns the serial port. Everything else subscribes to it.
+read_buffer  = 32768          # bytes; matches the STRSVR value being replaced
+# Emit a warning if no bytes arrive for this long.
+stall_warn   = 10             # seconds
+
+# Raw passthrough listeners, replacing the str2str/STRSVR pair.
+[[hub.listener]]
+name    = "raw"
+listen  = "0.0.0.0:5003"
+filter  = "none"              # everything: UBX + RTCM3, byte-identical
+
+[[hub.listener]]
+name    = "raw-alt"
+listen  = "0.0.0.0:5001"
+filter  = "none"
+
+[caster]
+listen        = "0.0.0.0:2101"
+# Dedicated listener speaking PROXY protocol v1/v2, for traffic arriving via
+# the VPS. Without this every rover appears as the proxy's address.
+proxy_listen  = "0.0.0.0:2102"
+proxy_trusted = []            # CIDRs allowed to send a PROXY header
+ntrip_v1      = true          # ICY 200 OK
+ntrip_v2      = true          # HTTP/1.1 chunked
+operator      = "example.org"
+country       = "SVK"
+# Sourcetable fields. These are what the live stream actually is, which is
+# not always what a receiver's datasheet implies.
+format_string = "RTCM 3.2"
+carrier       = 3
+
+# Mountpoints are pure message-type FILTERS over the hub stream.
+# This receiver family emits MSM4 and MSM7 concurrently, so serving both costs
+# nothing and no observation is ever transcoded -- lossless, near-zero CPU.
+[[caster.mountpoint]]
+name        = "MyStation_MSM7"
+source_id   = 1
+nav_system  = "GPS+GAL+BDS"
+# type = decimation in seconds (1 = every epoch)
+messages    = [
+  { type = 1006, interval = 10 },
+  { type = 1008, interval = 10 },
+  { type = 1033, interval = 10 },
+  { type = 1077, interval = 1 },
+  { type = 1097, interval = 1 },
+  { type = 1127, interval = 1 },
+]
+
+[[caster.mountpoint]]
+name        = "MyStation_MSM4"
+source_id   = 2
+nav_system  = "GPS+GAL+BDS"
+messages    = [
+  { type = 1006, interval = 10 },
+  { type = 1008, interval = 10 },
+  { type = 1033, interval = 10 },
+  { type = 1074, interval = 1 },
+  { type = 1094, interval = 1 },
+  { type = 1124, interval = 1 },
+]
+
+[archive]
+# Local spool. Data is written here first and appended to the share
+# continuously, so an SMB outage costs disk space rather than data and can
+# never stall the process that owns the receiver.
+spool_dir   = "/var/lib/psgnss/spool"
+mount_point = "/mnt/gnssraw"
+# How often the growing file is appended to the share. Only new bytes are
+# copied, so cost is proportional to new data, not file size.
+sync_every_sec  = 60
+# Days of archive to keep. 0 disables pruning entirely.
+retention_days  = 365
+
+# Two separate archives, deliberately not one mixed file.
+[archive.rtcm]
+enabled   = true
+# %Y%m%d = date, %h = hour. Changing this breaks continuity with files already
+# recorded, and with anything downstream that reads them by name.
+pattern   = "Base1_%Y%m%d%h00"
+subdir    = "RAW"
+swap_hours   = 24
+swap_margin  = 30             # seconds of overlap across a swap
+filter    = "rtcm3"
+
+[archive.ubx]
+# The UBX archive is the only source of ephemeris: RTCM carries observations
+# but no navigation data, so with this disabled RINEX conversion of files
+# recorded from now on yields a .obs but no .nav. Historical files written as
+# the full multiplexed stream still convert completely.
+enabled   = false
+pattern   = "Base1_ubx_%Y%m%d%h00"
+subdir    = "UBX"
+swap_hours   = 24
+swap_margin  = 30
+filter    = "ubx"
+
+[archive.nav]
+# RINEX navigation source. RXM-SFRBX carries broadcast ephemeris and RXM-RAWX
+# supplies the receiver time RTKLIB needs to date those subframes. An
+# SFRBX-only stream looks valid but convbin cannot produce a RINEX NAV file.
+#
+# This is still smaller than the full UBX stream because status/navigation
+# messages that are not needed for post-processing are excluded.
+enabled   = true
+pattern   = "Base1_nav_%Y%m%d%h00"
+subdir    = "NAV"
+swap_hours   = 24
+swap_margin  = 30
+filter    = "ubx"
+messages  = ["RXM-SFRBX", "RXM-RAWX"]
+
+[rinex]
+convbin_path = "/opt/psgnss/bin/convbin"
+version      = "3.04"
+# convbin -f, the number of frequency SLOTS (not signals per constellation).
+#
+# Measured on a ZED-X20P:
+#   -f 2  GPS L1/L2, Galileo E1 only, BeiDou ABSENT ENTIRELY   (the old default)
+#   -f 3  + GPS L5, Galileo E5a, BeiDou B2a
+#   -f 4  + Galileo E6, BeiDou B3I                             <- complete
+#   -f 5+ identical output to -f 4
+#
+# The predecessor tool hardcoded 2, an F9P-era default. On this triple-band
+# receiver that dropped L5, E6 and B2a AND lost BeiDou altogether.
+frequencies  = 4
+raw_format   = "ubx"
+output_dir   = "/var/lib/psgnss/rinex"
+compression  = "zip"          # zip | none | hatanaka
+
+[telemetry]
+db_path   = "/var/lib/psgnss/psgnss.db"
+# One compact blob per epoch, not a row per satellite-signal.
+retention_days = 7
+# Decimation: full rate recently, coarser further back.
+fine_rate_hz     = 1
+fine_window_min  = 60
+coarse_interval  = 30         # seconds, beyond the fine window
+
+[web]
+listen     = "0.0.0.0:8090"
+language   = "en"
+
+[update]
+# Signed releases. Empty means this station is updated by hand, which is the
+# default: nothing in the daemon updates itself on a timer.
+#
+#   psgnssd --update-check    what is available, and what it would change
+#   psgnssd --update          install it, with automatic rollback
+#
+# A release is only accepted if it is signed by the key compiled into the
+# running binary. The updater verifies the signature, the size and the hash,
+# then asks the new binary whether it accepts THIS configuration -- all before
+# anything is replaced -- and puts the old binary back if the restarted service
+# does not answer.
+manifest_url = ""
+# service_unit = "psgnss.service"
+# binary_path  = ""              # empty: the running executable
+
+[security]
+# AES-256-GCM key for reversible NTRIP password storage. Root-only, 0600.
+# NTRIP passwords are stored reversibly (not hashed) so an admin can view
+# them in the UI -- a deliberate trade-off, documented in the README.
+# Note this is strictly better than the system being replaced, which stored
+# them base64-encoded.
+key_file = "/etc/psgnss/secrets/master.key"
+
+[logging]
+level = "info"                # debug | info | warn | error
+dir   = "/var/log/psgnss"

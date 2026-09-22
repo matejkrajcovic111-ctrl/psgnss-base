@@ -1,0 +1,613 @@
+/* ------------------------------------------------------------------ tokens
+   The palette, the radii and the type scale are Tabler 1.4's, which is also
+   vendored as tabler-1.4.0.min.css and sits underneath this file. Tabler
+   supplies the reset, the grid and the component skeletons; everything below
+   is the station's own skin on top of it, and every colour, type step, radius
+   and spacing step in this file comes from the block below.
+
+   Light is the default now: the public dashboard is read in daylight as often
+   as in a dark office, and the dark palette follows the operating system or
+   the header switch (data-theme), which also flips Tabler's own data-bs-theme. */
+:root{
+  /* surfaces and text */
+  --bg:#f9fafb; --panel:#fff; --panel2:#f1f3f5; --line:#e5e7eb;
+  --fg:#1f2937; --dim:#6b7280; --muted:var(--dim);
+  /* state */
+  --accent:#066fd1; --ok:#2fb344; --warn:#f76707; --bad:#d63939;
+  --on-accent:#fff; --on-ok:#fff;
+  --scrim:rgba(17,24,39,.5);
+  --shadow-sm:0 1px 2px rgba(17,24,39,.06);
+  --shadow:0 12px 28px rgba(17,24,39,.14);
+  --ring:rgba(6,111,209,.25);
+  /* constellations: Tabler's chart palette, distinguishable in both themes */
+  --gps:#2fb344; --gal:#066fd1; --bds:#d63939; --sbas:#f59f00; --glo:#7048e8;
+  --qzss:#d6336c; --navic:#f76707;
+  --range:#f76707;
+  /* type: Inter for the interface, one mono pair for measurements */
+  --sans:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+  --mono:"JetBrains Mono",Monaco,Consolas,"Liberation Mono","Courier New",monospace;
+  --fs-1:11px; --fs-2:12px; --fs-3:13px; --fs-4:14px;
+  --fs-5:16px; --fs-6:18px; --fs-7:24px;
+  /* spacing: 4px grid */
+  --s1:4px; --s2:8px; --s3:12px; --s4:16px; --s5:24px; --s6:32px;
+  /* the page measure, and the gutter that aligns the bars with the content */
+  --page:1500px; --gutter:max(var(--s4),calc((100% - var(--page))/2));
+  /* radii: a surface is 8px, a control 6px, an indicator round */
+  --r-control:6px; --r-surface:8px; --r-pill:999px;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#111827; --panel:#182234; --panel2:#1e293b; --line:#2e3c51;
+    --fg:#e5e7eb; --dim:#94a3b8;
+    /* Tabler's dark primaries, lifted enough to stay legible as text on the
+       dark surface rather than only as a fill. */
+    --accent:#4dabf7; --ok:#40c057; --warn:#fd7e14; --bad:#ff6b6b;
+    --on-accent:#0b1220; --on-ok:#0b1220;
+    --scrim:rgba(3,8,15,.66);
+    --shadow-sm:0 1px 2px rgba(0,0,0,.4);
+    --shadow:0 14px 30px rgba(0,0,0,.45);
+    --ring:rgba(77,171,247,.3);
+    --gps:#40c057; --gal:#4dabf7; --bds:#ff6b6b; --sbas:#fcc419; --glo:#9775fa;
+    --qzss:#f06595; --navic:#fd7e14;
+    --range:#fd7e14;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#111827; --panel:#182234; --panel2:#1e293b; --line:#2e3c51;
+  --fg:#e5e7eb; --dim:#94a3b8;
+  --accent:#4dabf7; --ok:#40c057; --warn:#fd7e14; --bad:#ff6b6b;
+  --on-accent:#0b1220; --on-ok:#0b1220;
+  --scrim:rgba(3,8,15,.66);
+  --shadow-sm:0 1px 2px rgba(0,0,0,.4);
+  --shadow:0 14px 30px rgba(0,0,0,.45);
+  --ring:rgba(77,171,247,.3);
+  --gps:#40c057; --gal:#4dabf7; --bds:#ff6b6b; --sbas:#fcc419; --glo:#9775fa;
+  --qzss:#f06595; --navic:#fd7e14;
+  --range:#fd7e14;
+}
+/* Inter, subset to latin and vendored: the Pi has no internet and the tunnel
+   should not make a visitor wait on a font host. */
+@font-face{font-family:Inter;font-style:normal;font-weight:400;font-display:swap;src:url(inter-400.woff2) format('woff2')}
+@font-face{font-family:Inter;font-style:normal;font-weight:500;font-display:swap;src:url(inter-500.woff2) format('woff2')}
+@font-face{font-family:Inter;font-style:normal;font-weight:600;font-display:swap;src:url(inter-600.woff2) format('woff2')}
+@font-face{font-family:Inter;font-style:normal;font-weight:700;font-display:swap;src:url(inter-700.woff2) format('woff2')}
+*{box-sizing:border-box}
+/* Tabler reads its own variables; these are the station's tokens handed to it,
+   so every Tabler component -- button, card, table, form control, navbar --
+   follows the same palette and the same theme switch as everything drawn in
+   this file. */
+:root{
+  --tblr-body-bg:var(--bg); --tblr-body-color:var(--fg);
+  --tblr-bg-surface:var(--panel); --tblr-bg-surface-secondary:var(--panel2);
+  --tblr-border-color:var(--line); --tblr-border-color-translucent:var(--line);
+  --tblr-secondary:var(--dim); --tblr-muted:var(--dim);
+  --tblr-primary:var(--accent); --tblr-success:var(--ok);
+  --tblr-warning:var(--warn); --tblr-danger:var(--bad);
+  --tblr-font-sans-serif:var(--sans); --tblr-font-monospace:var(--mono);
+  --tblr-border-radius:var(--r-control); --tblr-border-radius-lg:var(--r-surface);
+  --tblr-box-shadow-sm:var(--shadow-sm); --tblr-box-shadow:var(--shadow);
+}
+.dot,.instrument-state i,.diagnostic-test-icon,.info-button{border-radius:50%}
+.badge,.pill{border-radius:var(--r-pill)}
+body{margin:0;background:var(--bg);color:var(--fg);
+  font:var(--fs-4)/1.45 var(--sans);-webkit-font-smoothing:antialiased}
+a{color:var(--accent)}
+h1,h2,h3{letter-spacing:-.01em}
+.wrap{max-width:var(--page);margin:0 auto;padding:var(--s3) var(--s4) var(--s5)}
+
+/* ---------------------------------------------------------------- the shell
+   A quiet bar with the identity and the live counts, a tab strip under it,
+   and the page below. Both bars are one surface deep, so the content is the
+   only thing with a shadow. */
+header{display:flex;align-items:center;gap:var(--s3);flex-wrap:wrap;
+  padding:var(--s2) var(--gutter);background:var(--panel);border-bottom:1px solid var(--line)}
+header .sp{flex:1}
+.brand{display:flex;align-items:center;gap:var(--s2);height:32px}
+.brand-word{font:700 var(--fs-5)/1 var(--sans);letter-spacing:-.02em}
+.brand-mark{width:46px;height:28px;overflow:visible}.brand-mark ellipse,.brand-mark path{fill:none;stroke:var(--accent);stroke-width:.9;opacity:.46}.brand-mark .brand-core{fill:var(--accent);transform-box:fill-box;transform-origin:center;animation:brand-pulse 4s ease-in-out infinite}.brand-mark .brand-sat{stroke:var(--panel);stroke-width:.65}.brand-mark .brand-sat.gps{fill:var(--gps)}.brand-mark .brand-sat.gal{fill:var(--gal)}.brand-mark .brand-sat.bds{fill:var(--bds)}.brand-mark .brand-sat.sbas{fill:var(--sbas)}.brand-mark .brand-sat.glo{fill:var(--glo)}.brand-mark .brand-sat.qzss{fill:var(--qzss)}.brand-mark .brand-sat.navic{fill:var(--navic)}@keyframes brand-pulse{0%,100%{opacity:.45;transform:scale(.82)}50%{opacity:1;transform:scale(1.08)}}
+.header-version{font-size:var(--fs-2);white-space:nowrap}
+.icon-button{width:34px;height:34px;display:inline-flex;align-items:center;justify-content:center;
+  padding:0;border:1px solid var(--line);border-radius:var(--r-control);background:var(--panel);
+  color:var(--dim);cursor:pointer;transition:color .12s,border-color .12s,background .12s}
+.icon-button:hover,.icon-button:focus-visible,.icon-button.on{color:var(--accent);border-color:var(--accent);
+  background:var(--panel2);outline:none}
+.settings-button svg,.theme-button svg{display:block;width:18px;height:18px;fill:none;stroke:currentColor;
+  stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+.page-help{position:relative}
+.info-button{font:700 var(--fs-5)/1 var(--sans);border-radius:50%}
+.help-popover{display:none;position:absolute;z-index:100;right:0;top:40px;width:min(520px,calc(100vw - 24px));
+  max-height:min(72vh,680px);overflow-y:auto;padding:var(--s4);background:var(--panel);
+  border:1px solid var(--line);border-radius:var(--r-surface);box-shadow:var(--shadow)}
+.page-help:hover .help-popover,.page-help:focus-within .help-popover{display:block}
+.help-popover h2{margin:0 0 var(--s2);color:var(--fg);font:600 var(--fs-4)/1.2 var(--sans);letter-spacing:-.01em}
+.help-popover dl{margin:0}
+.help-popover dl div{display:grid;grid-template-columns:120px 1fr;gap:var(--s3);padding:var(--s2) 0;border-top:1px solid var(--line)}
+.help-popover dt{color:var(--fg);font:600 var(--fs-2)/1.4 var(--sans)}
+.help-popover dd{margin:0;color:var(--dim);font-size:var(--fs-2);line-height:1.45}
+.badge{display:inline-flex;align-items:center;gap:var(--s2);padding:var(--s1) var(--s3);
+  font-size:var(--fs-2);font-weight:600;color:var(--dim);background:var(--panel2);border:1px solid var(--line)}
+.dot{width:8px;height:8px;background:var(--bad)}
+.dot.ok{background:var(--ok)}
+.dot.warn{background:var(--warn)}
+nav{display:flex;gap:var(--s4);flex-wrap:wrap;padding:0 var(--gutter);background:var(--panel);
+  border-bottom:1px solid var(--line)}
+nav button{background:none;border:0;border-bottom:2px solid transparent;color:var(--dim);
+  padding:var(--s2) var(--s3);margin-bottom:-1px;font:500 var(--fs-4)/1.3 var(--sans);cursor:pointer;
+  transition:color .12s,border-color .12s}
+nav button.on{color:var(--accent);border-bottom-color:var(--accent);font-weight:600}
+nav button:hover{color:var(--fg)}
+.auto-grid{display:grid;gap:var(--s3);grid-template-columns:repeat(auto-fit,minmax(300px,1fr))}
+
+/* ----------------------------------------------------------------- surfaces
+   One card treatment everywhere: a rounded panel, a hairline border and a
+   shadow small enough that a page of them does not look quilted. */
+/* Tabler's .card is a flex column; this markup has always laid its cards out
+   as flow content, and the few that want a column say so themselves. The
+   surface, border, radius and shadow are Tabler's. */
+.card{display:block;padding:var(--s3)}
+.card h2{margin:0 0 var(--s2);font-size:var(--fs-4);font-weight:600;color:var(--fg);letter-spacing:-.01em}
+.kpis{display:grid;gap:var(--s2);grid-template-columns:repeat(auto-fit,minmax(118px,1fr))}
+.kpi{background:var(--panel);border:1px solid var(--line);border-radius:var(--r-control);padding:var(--s2)}
+.kpi .v{font:600 var(--fs-7)/1.2 var(--sans);letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.kpi .l{font-size:var(--fs-1);color:var(--dim);font-weight:600}
+.kpi .s{font-size:var(--fs-2);color:var(--dim)}
+table{width:100%;border-collapse:collapse;font-size:var(--fs-3)}
+th{text-align:left;color:var(--dim);font-weight:600;font-size:var(--fs-1);
+  padding:var(--s1) var(--s2);border-bottom:1px solid var(--line)}
+td{padding:var(--s1) var(--s2);border-bottom:1px solid var(--line)}
+tbody tr:hover td{background:var(--panel2)}
+tr:last-child td{border-bottom:0}
+.tbl-scroll{overflow-x:auto}
+.mono{font-family:var(--mono);font-size:var(--fs-2);font-variant-numeric:tabular-nums}
+.muted{color:var(--dim)}
+
+/* ----------------------------------------------------------------- controls */
+/* Buttons, inputs, selects and tables are Tabler's .btn, .form-control,
+   .form-select and .table. Only the station's own variants live here. */
+button.danger:hover{border-color:var(--bad);color:var(--bad)}
+input,select,textarea{width:100%;font-variant-numeric:tabular-nums}
+textarea{resize:vertical}
+/* Keyboard focus stays visible on everything that is not a text control,
+   which the hover-only styling below does not cover. */
+button:focus-visible,a:focus-visible,[tabindex]:focus-visible{outline:2px solid var(--accent);
+  outline-offset:2px}
+label{display:block;font-size:var(--fs-2);color:var(--dim);font-weight:500;margin-bottom:var(--s1)}
+.control-row{display:flex;gap:var(--s3);flex-wrap:wrap;align-items:flex-end}
+.control-row>div{flex:1;min-width:130px}
+.login{max-width:340px;margin:12vh auto;padding:0 var(--s4)}
+.err{color:var(--bad);font-size:var(--fs-3);margin-top:var(--s2)}
+
+.sw{width:10px;height:10px;display:inline-block}
+svg{display:block;max-width:100%}
+.dashboard-shell{display:flex;flex-direction:column;gap:var(--s2);min-width:0;margin:-8px 0}
+.dashboard-kpis{padding:0;overflow:hidden}
+.dashboard-titlebar{min-height:36px;display:flex;align-items:center;gap:var(--s3);padding:var(--s1) var(--s3);
+  border-bottom:1px solid var(--line);font-size:var(--fs-2);color:var(--dim)}
+.instrument-title{color:var(--fg);font:600 var(--fs-4)/1.2 var(--sans);letter-spacing:-.01em}
+.instrument-state{display:inline-flex;align-items:center;gap:var(--s2);padding:var(--s1) var(--s3);
+  border:1px solid var(--line);border-radius:var(--r-pill);background:var(--panel2);font-weight:500}.instrument-state i{width:6px;height:6px;border-radius:50%;background:var(--bad)}
+.instrument-state.ok{color:var(--ok)}.instrument-state.ok i{background:var(--ok);box-shadow:0 0 7px color-mix(in srgb,var(--ok) 70%,transparent)}
+.instrument-state.bad{color:var(--bad)}.instrument-clock{margin-left:auto;font-size:var(--fs-1);display:flex;align-items:center;gap:var(--s2);white-space:nowrap}.instrument-clock i{width:1px;height:12px;background:var(--line)}
+.dashboard-kpis .kpis{padding:var(--s2);gap:var(--s2);grid-template-columns:repeat(auto-fit,minmax(118px,1fr))}
+.dashboard-kpis .kpi{padding:var(--s2);min-width:0}
+.dashboard-kpis .kpi .v{font-size:var(--fs-6);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dashboard-kpis .kpi .l,.dashboard-kpis .kpi .s{font-size:var(--fs-1);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.gnss-instruments{display:flex;flex-direction:column;gap:var(--s2);min-width:0}
+.constellation-controls{min-height:36px;display:flex;align-items:center;gap:var(--s2);padding:var(--s1) var(--s2);
+  border:1px solid var(--line);border-radius:var(--r-surface);background:var(--panel);min-width:0}
+.control-label{font:600 var(--fs-2)/1.2 var(--sans);color:var(--dim);padding:0 var(--s1)}
+.constellation-toggle{height:28px;display:inline-flex;align-items:center;gap:var(--s2);background:var(--panel2);
+  border:1px solid var(--line);color:var(--fg);padding:0 var(--s2);font:600 var(--fs-1)/1 var(--mono);cursor:pointer}
+.constellation-toggle i{width:7px;height:7px;background:var(--sys-color);box-shadow:0 0 6px var(--sys-color)}
+.constellation-toggle b{min-width:17px;padding-left:var(--s2);border-left:1px solid var(--line);color:var(--dim);font-weight:500;text-align:right}
+.constellation-toggle.on{border-color:var(--sys-color);background:color-mix(in srgb,var(--sys-color) 10%,var(--panel2))}
+.constellation-toggle.off{opacity:.42}.constellation-toggle.off i{background:transparent;box-shadow:none;border:1px solid var(--sys-color)}
+
+.plot-card{min-width:0;max-width:100%;overflow:hidden;padding:var(--s2) var(--s2) var(--s1)}
+.plot-card h2{text-align:left;margin:0 0 var(--s2);font:600 var(--fs-3)/1.2 var(--sans);color:var(--dim)}
+.plot-host{width:100%;min-width:0}
+.plot-host.loading{display:grid;place-items:center;color:var(--muted);font:var(--fs-2) var(--sans);}
+.plot-host.loading::before{content:'Loading instruments…'}
+.skyplot-chart{height:clamp(350px,42dvh,480px)}
+.snr-chart{height:clamp(300px,35dvh,400px)}
+@media (max-width:1100px){.dashboard-kpis .kpis{grid-template-columns:repeat(3,1fr)}.skyplot-chart{height:420px}.snr-chart{height:370px}}
+@media (max-width:640px){.constellation-controls{height:auto;flex-wrap:wrap}.dashboard-kpis .kpis{grid-template-columns:repeat(2,1fr)}.dashboard-titlebar{flex-wrap:wrap;height:auto;min-height:36px}.instrument-clock{margin-left:0}.plot-host{height:380px}}
+.pill{font-size:var(--fs-2);padding:var(--s1) var(--s2);border-radius:var(--r-pill);background:var(--panel2);
+  border:1px solid var(--line);color:var(--dim)}
+.pill.ok{color:var(--ok);border-color:var(--ok)}
+.pill.bad{color:var(--bad);border-color:var(--bad)}
+.pill.warn{color:var(--warn);border-color:var(--warn)}
+@media (max-width:640px){ .wrap{padding:var(--s2)} header{padding:var(--s2)} }
+
+/* User management */
+.card-title{display:flex;align-items:center;justify-content:space-between;gap:var(--s3);margin-bottom:var(--s2)}
+.card-title h2{margin:0}
+.user-link{background:none;border:0;color:var(--accent);padding:0;cursor:pointer;
+  text-decoration:underline;text-underline-offset:2px}
+.selected-row td{background:color-mix(in srgb,var(--accent) 8%,transparent)}
+.active-row td{background:color-mix(in srgb,var(--ok) 6%,transparent)}
+.error-card{grid-column:1/-1;padding:var(--s2) var(--s4)}
+.error-card .err{margin:0}
+.settings-page{display:flex;flex-direction:column;gap:var(--s4)}
+/* Settings is five screens, not one column of five cards. The sub-nav reuses
+   the page tab treatment one level down. */
+.subnav{display:flex;gap:var(--s1);flex-wrap:wrap;border-bottom:1px solid var(--line)}
+.subnav button{background:none;border:0;border-bottom:2px solid transparent;color:var(--dim);
+  padding:var(--s2) var(--s3);font:600 var(--fs-2)/1.3 var(--sans);cursor:pointer}
+.subnav button:hover{color:var(--fg)}
+.subnav button.on{color:var(--fg);border-bottom-color:var(--accent)}
+.settings-panel{display:flex;flex-direction:column;gap:var(--s4)}
+.settings-panel[hidden]{display:none}.settings-section>.card-title{align-items:flex-start}
+.settings-section>.card-title p{margin:var(--s1) 0 0}.mountpoint-editor{display:grid;grid-template-columns:repeat(auto-fit,minmax(460px,1fr));gap:var(--s2)}
+.mount-editor{border:1px solid var(--line);background:color-mix(in srgb,var(--panel2) 45%,transparent);padding:var(--s2);min-width:0}
+.mount-editor.disabled{opacity:.66}.mount-editor-head{display:flex;align-items:center;flex-wrap:wrap;gap:var(--s2);margin-bottom:var(--s2);padding-bottom:var(--s2);border-bottom:1px solid var(--line)}
+.mount-editor-head .check{margin:0;flex:1;color:var(--fg)}.settings-fields{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--s2)}
+.mount-live{font-size:var(--fs-1);color:var(--dim);white-space:nowrap}.sourcetable-preview{margin-top:var(--s2);color:var(--dim)}
+.sourcetable-preview code{display:block;margin-top:var(--s2);padding:var(--s2);background:var(--bg);border:1px solid var(--line);white-space:pre-wrap;overflow-wrap:anywhere;color:var(--fg);font-size:var(--fs-1)}
+.settings-fields>div{min-width:0}.settings-fields .wide{grid-column:1/-1}
+.board-profile-note{padding:var(--s2) var(--s3);border-left:2px solid var(--accent);background:var(--panel2);color:var(--dim)}.board-profile-note strong{color:var(--fg)}
+.settings-subsection{margin-top:var(--s2);padding:var(--s3);background:var(--panel2);border-left:2px solid var(--accent)}.settings-subsection h3{margin:0 0 var(--s1);font:700 var(--fs-2)/1.3 var(--sans);}.settings-subsection .field-help{margin:0 0 var(--s2)}.settings-checks{display:flex;flex-wrap:wrap;gap:var(--s2) var(--s4)}.settings-checks .check{margin:0}.inline-field{display:flex;align-items:center;gap:var(--s2);margin-top:var(--s3)}.inline-field label{margin:0}.inline-field input{width:90px}.inline-field span{color:var(--dim);font-size:var(--fs-2)}
+.position-fields{grid-template-columns:repeat(3,minmax(180px,1fr));max-width:980px}.position-card{border-left:2px solid var(--warn)}
+.station-id-card{border-left:2px solid var(--bad)}.station-id-card .settings-fields{max-width:300px}
+.admin-create{margin-top:var(--s4);padding-top:var(--s3);border-top:1px solid var(--line)}
+/* The instrument cards themselves. Where they sit and how tall they are is
+   the panel tile grid's business, further down. */
+.map-card{display:flex;flex-direction:column}.epoch-summary-card{display:flex;flex-direction:column}.epoch-summary{display:flex;flex-direction:column;gap:var(--s3);overflow:auto}.epoch-readouts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--s2)}.epoch-readouts .rd{padding:var(--s2);background:var(--panel2);border-right:0;border-left:2px solid var(--line)}.epoch-readouts .rd-v{font-size:var(--fs-3)}.epoch-table{width:100%;border-collapse:collapse}.epoch-table th{text-align:left;font-size:var(--fs-1);color:var(--dim);font-weight:600}.epoch-table th,.epoch-table td{padding:var(--s1) var(--s2);border-bottom:1px solid var(--line)}.epoch-table td .dot{display:inline-block;width:8px;height:8px;margin-right:var(--s2)}.epoch-table tr.absent td{color:var(--dim)}.epoch-table tr.absent .dot{opacity:.35}
+/* flex:1 is flex-basis:0, and in a column flex container the basis -- not
+   height -- is the main size. The card has no definite height of its own, so
+   a basis of 0 with nothing to grow into collapsed the map to nought and
+   Leaflet drew a 0px-high map with its tiles loaded. Basis auto lets the
+   height the panel sets actually apply. */
+.map-host{width:100%;flex:1 1 auto;min-height:0;background:var(--panel2)}
+.map-range{display:flex;align-items:baseline;justify-content:center;flex-wrap:wrap;gap:var(--s2);padding:var(--s2) var(--s2) 0;text-align:center}.map-range b{font-size:var(--fs-3);color:var(--range);}.map-range span{font-size:var(--fs-1)}
+.map-readout{padding-top:var(--s1);text-align:center;font-size:var(--fs-1)}
+.map-note{margin:var(--s3)}
+/* Leaflet draws its own controls; keep them on the instrument palette rather
+   than its default white-on-white. */
+.leaflet-container{background:var(--panel2);font:var(--fs-2)/1.4 var(--sans)}
+.leaflet-bar a,.leaflet-control-attribution{background:var(--panel);color:var(--fg);border-color:var(--line)}
+.leaflet-bar a:hover{background:var(--panel2);color:var(--accent)}
+.leaflet-control-attribution a{color:var(--accent)}
+.pushout-card{border-left:2px solid var(--accent)}
+.pushout-card .mount-editor{margin-bottom:var(--s3)}
+.integrity-card{border-left:2px solid var(--ok)}.log-card .card-title a.act{text-decoration:none}.log-actions .check{white-space:nowrap}.log-lines{max-height:clamp(280px,44dvh,560px);overflow:auto;background:var(--bg);border:1px solid var(--line)}.log-line:last-child{border-bottom:0}.log-line span{color:var(--dim)}.log-line.error{border-left:2px solid var(--bad)}.log-line.error b{color:var(--bad)}.log-line.warn{border-left:2px solid var(--warn)}.log-line.warn b{color:var(--warn)}.log-line.debug code{color:var(--dim)}.power-actions{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--s2)}.power-action{display:flex;flex-direction:column;gap:var(--s2);padding:var(--s3);background:var(--panel2);border-left:2px solid var(--line)}.power-action small{color:var(--dim);font-size:var(--fs-1);flex:1}.power-confirm{display:flex;align-items:flex-end;gap:var(--s2);margin-top:var(--s3);padding:var(--s3);background:var(--panel2);border-left:2px solid var(--bad)}.power-confirm label{flex:1}@media(max-width:900px){.log-filters,.power-actions{grid-template-columns:1fr}.log-line{grid-template-columns:1fr}.log-line span,.log-line b{display:inline}}.integrity-actions{display:flex;gap:var(--s2);flex-wrap:wrap}.integrity-progress{margin:var(--s3) 0;padding:var(--s3);background:var(--panel2);border:1px solid var(--line)}.integrity-progress .integrity-grid{margin-top:var(--s3)}.integrity-progress .rd{background:var(--panel);border-left-color:var(--accent)}.integrity-progress .note{margin-top:var(--s2)}.integrity-last{display:flex;align-items:center;flex-wrap:wrap;gap:var(--s2);margin:var(--s3) 0;padding:var(--s2);background:var(--panel2);border:1px solid var(--line)}.integrity-last .muted{margin-left:auto}
+.modal-backdrop{position:fixed;inset:0;z-index:1000;display:flex;align-items:center;justify-content:center;padding:var(--s5);background:var(--scrim)}
+.modal-card{width:min(620px,100%);max-height:calc(100vh - 40px);overflow:auto;box-shadow:var(--shadow)}
+.login-card{width:min(420px,100%)}.login-card .card-title{margin-bottom:var(--s3)}
+@media(max-width:850px){.mountpoint-editor{grid-template-columns:1fr}.settings-fields,.position-fields{grid-template-columns:1fr}.settings-fields .wide{grid-column:auto}}
+.users-page .subnav{margin-bottom:var(--s4)}
+.users-layout{grid-column:1/-1;display:grid;grid-template-columns:minmax(300px,410px) minmax(0,1fr);gap:var(--s4)}
+.user-detail{display:flex;flex-direction:column;gap:var(--s4);min-width:0}
+.user-kpis{grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}
+.user-kpis .kpi .v{font-size:var(--fs-5)}
+.field-row.two{grid-template-columns:1fr 1fr}
+.check-field{display:flex;flex-direction:column;justify-content:flex-end}
+label.check{display:flex;align-items:center;gap:var(--s2);color:var(--fg);font-size:var(--fs-3);
+  text-transform:none;letter-spacing:0;margin:0;padding:var(--s2) 0;cursor:pointer}
+label.check input{width:auto;margin:0;accent-color:var(--accent)}
+.mount-checks{display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:var(--s1) var(--s2);
+  padding:var(--s1) var(--s2);border:1px solid var(--line);background:var(--panel2)}
+.mount-checks input:disabled{opacity:.45}
+.field-help{font-size:var(--fs-2);color:var(--dim);margin-top:var(--s1)}
+.bad-text{color:var(--bad)}
+.form-actions{display:flex;align-items:center;gap:var(--s2);padding-top:var(--s3);margin-top:var(--s4);
+  border-top:1px solid var(--line)}
+.user-meta{margin:var(--s4) 0 0;grid-template-columns:105px 1fr}
+.user-meta dd{overflow-wrap:anywhere}
+.history-pager{display:flex;align-items:center;justify-content:flex-end;gap:var(--s2);margin-top:var(--s3)}
+.history-pager span{min-width:105px;text-align:center;font-size:var(--fs-2)}
+button.act:disabled{opacity:.4;cursor:default}
+@media (max-width:900px){.users-layout{grid-template-columns:1fr}}
+@media (max-width:480px){.field-row.two{grid-template-columns:1fr}}
+
+/* Receiver configuration */
+.receiver{display:flex;flex-direction:column;gap:var(--s4)}
+.receiver-id .rd-v{font-size:var(--fs-3);overflow-wrap:anywhere}
+
+.receiver-pending{border-color:var(--warn)}
+.receiver-pending p{font-size:var(--fs-3)}
+.msg-rates{max-height:440px;overflow:auto}
+.msg-rates input.rate{width:62px;padding:var(--s1) var(--s2);text-align:right}
+.msg-rates input.rate.on{border-color:var(--ok)}
+.msg-rates input.rate.changed{border-color:var(--warn);color:var(--warn)}
+.receiver .quick label.check{padding:0}
+.signal-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:var(--s2)}
+.signal-sys{background:var(--panel2);border:1px solid var(--line);padding:var(--s2) var(--s2)}
+.signal-sys.unsupported{opacity:.7;border-style:dashed}
+.signal-sys .sys-toggle{border-bottom:1px solid var(--line);margin-bottom:var(--s1);flex-wrap:wrap}
+.signal-sys label.check input:disabled{opacity:.45}
+.raw-edit{margin-bottom:var(--s4);padding-bottom:var(--s1)}
+.raw-group h3{font-size:var(--fs-2);margin:var(--s4) 0 var(--s2);font-weight:600}
+.raw-scroll{max-height:360px;overflow:auto}
+.user-link:disabled{opacity:.4;cursor:default}
+@media (max-width:640px){.receiver-grid{grid-template-columns:1fr}.receiver-groups{grid-template-columns:1fr}}
+
+/* Operations and health */
+.operations-page{display:flex;flex-direction:column;gap:var(--s4)}
+
+.diag-meter>div:first-child{display:flex;justify-content:space-between;gap:var(--s2);font-size:var(--fs-2)}.diag-meter>div:first-child span{color:var(--dim);}.diag-meter small{display:block;color:var(--dim);font-size:var(--fs-1);margin-top:var(--s1)}.diag-meter-track{height:7px;margin-top:var(--s1);background:var(--bg);border:1px solid var(--line);overflow:hidden}.diag-meter-track i{display:block;height:100%;background:var(--ok)}.diag-meter-track i.bad{background:var(--bad)}.integrity-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:var(--s2)}.integrity-grid .rd{padding:var(--s2);background:var(--panel2);border-left:2px solid var(--line)}
+.log-actions{display:flex;align-items:flex-end;gap:var(--s2)}.log-card.collapsed .card-title{margin-bottom:0}
+.log-filters{display:grid;grid-template-columns:140px minmax(220px,1fr);gap:var(--s2);margin-bottom:var(--s2)}
+.log-line{display:grid;grid-template-columns:150px 48px minmax(0,1fr);gap:var(--s2);padding:var(--s1) var(--s2);border-bottom:1px solid color-mix(in srgb,var(--line) 55%,transparent);font-size:var(--fs-2)}.log-line time,.log-line code{color:var(--dim)}
+.log-line b{font:700 var(--fs-1)/1.6 var(--mono);color:var(--accent)}
+.log-line code{font-family:var(--mono);overflow-wrap:anywhere;white-space:normal}
+.diagnostic-launch{text-align:center;padding:var(--s6) var(--s5);background:radial-gradient(circle at 50% 0,color-mix(in srgb,var(--accent) 11%,transparent),transparent 48%),var(--panel)}.diagnostic-launch h2{margin:var(--s2) 0 var(--s2);color:var(--fg);font-size:var(--fs-6)}.diagnostic-launch p{max-width:760px;margin:0 auto var(--s5)}button.diagnose-button{min-width:192px;padding:var(--s3) var(--s5);border-color:var(--accent);color:var(--accent);font:700 var(--fs-3)/1 var(--mono);}.diagnostic-schedule{display:block;margin-top:var(--s3);color:var(--dim);font-size:var(--fs-2)}.diagnostic-results .card-title{margin-bottom:var(--s1)}.diagnostic-test-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--s2)}.diagnostic-test{display:grid;grid-template-columns:28px minmax(0,1fr) auto;align-items:center;gap:var(--s2);padding:var(--s2);background:var(--panel2);border-left:2px solid var(--bad)}.diagnostic-test.pass{border-left-color:var(--ok)}.diagnostic-test-icon{display:flex;width:24px;height:24px;align-items:center;justify-content:center;border:1px solid currentColor;border-radius:50%;color:var(--bad);font-weight:700}.diagnostic-test.pass .diagnostic-test-icon{color:var(--ok)}.diagnostic-test b,.diagnostic-test small{display:block}.diagnostic-test b{font:600 var(--fs-2)/1.3 var(--sans)}.diagnostic-test small{margin-top:var(--s1);color:var(--dim);font-size:var(--fs-1);overflow-wrap:anywhere}.diagnostic-test strong{color:var(--bad);font:700 var(--fs-1)/1 var(--mono)}.diagnostic-test.pass strong{color:var(--ok)}.diagnostic-readouts{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:var(--s2);margin-top:var(--s3)}.diagnostic-readouts .rd{padding:var(--s2);background:var(--panel2);border-left:2px solid var(--line)}.diagnostic-empty{text-align:center;color:var(--dim)}
+@media(max-width:1050px){.ops-kpis{grid-template-columns:repeat(2,1fr)}.operations-grid,.diagnostic-detail-grid{grid-template-columns:1fr}.log-line{grid-template-columns:140px 45px minmax(0,1fr)}.log-line code{grid-column:3}}
+@media(max-width:800px){.diagnostic-test-list{grid-template-columns:1fr}.diagnostic-readouts{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:620px){.ops-kpis,.integrity-grid{grid-template-columns:repeat(2,1fr)}.log-filters{grid-template-columns:1fr}.log-line{grid-template-columns:1fr 45px}.log-line span,.log-line code{grid-column:1/-1}.archive-row{display:block}.archive-row>div:last-child{text-align:left;margin-top:var(--s1)}.instrument-clock{flex-wrap:wrap}}
+
+/* Historical telemetry playback */
+.history-page{display:flex;flex-direction:column;gap:var(--s2)}.history-controls{position:sticky;top:0;z-index:4;border-top:2px solid var(--accent)}
+.history-control-grid{display:grid;grid-template-columns:180px minmax(220px,1fr);gap:var(--s2);align-items:end}.history-play{display:flex;flex-direction:column;gap:var(--s1);align-items:stretch}.history-play label{margin:0}.history-play button{align-self:flex-start}
+.scrubber{margin-top:var(--s3)}.scrubber input{width:100%;padding:0;accent-color:var(--accent)}.scrubber>div{display:flex;justify-content:space-between;gap:var(--s2);color:var(--dim);font:var(--fs-1)/1.3 var(--mono)}.scrubber b{color:var(--fg)}
+.history-playback .skyplot-chart{height:430px}.history-playback .snr-chart{height:360px}
+.history-chart-grid{display:grid;grid-template-columns:1fr 1fr;gap:var(--s2)}.history-chart{min-width:0;padding:var(--s2)}.history-chart.wide{grid-column:1/-1}.history-chart>div{height:300px}.history-chart.history-count>div{height:250px}.history-chart.host-history>div{height:430px}
+@media(max-width:800px){.history-control-grid{grid-template-columns:1fr}.history-chart-grid{grid-template-columns:1fr}.history-chart.wide{grid-column:auto}.history-playback .skyplot-chart,.history-playback .snr-chart{height:380px}.scrubber>div b{display:none}}
+
+/* ================= File download =================
+   Instrument-panel styling: restrained palette, 4px radii, a consistent type
+   scale, tabular figures, and colour reserved for state rather than decoration. */
+
+.fd{display:flex;flex-direction:column;gap:var(--s4)}
+.fd-cols{display:grid;gap:var(--s4);grid-template-columns:minmax(300px,380px) minmax(320px,1fr)}
+@media (max-width:860px){ .fd-cols{grid-template-columns:1fr} }
+
+.panel{background:var(--panel);border:1px solid var(--line);}
+.panel-h{display:flex;align-items:center;justify-content:space-between;gap:var(--s3);
+  padding:var(--s2) var(--s4);border-bottom:1px solid var(--line);min-height:40px}
+.panel-h h2{margin:0;font-size:var(--fs-2);font-weight:600;
+  color:var(--dim)}
+.panel-b{padding:var(--s4)}
+
+/* Readout strip */
+.strip{display:grid;grid-template-columns:repeat(auto-fit,minmax(118px,1fr));
+  background:var(--panel);border:1px solid var(--line);}
+.rd{padding:var(--s2) var(--s4);border-right:1px solid var(--line)}
+.rd:last-child{border-right:0}
+.rd-l{font-size:var(--fs-1);color:var(--dim);margin-bottom:var(--s1)}
+.rd-v{font-size:var(--fs-5);font-weight:600;font-variant-numeric:tabular-nums;letter-spacing:-.2px}
+@media (max-width:640px){ .rd{border-right:0;border-bottom:1px solid var(--line)} }
+
+/* Tabular readouts */
+.grid-t{width:100%;border-collapse:collapse;font-size:var(--fs-3)}
+.grid-t th{text-align:left;font-size:var(--fs-2);
+  color:var(--dim);font-weight:600;padding:var(--s1) var(--s2) var(--s1) 0;white-space:nowrap;border:0}
+.grid-t td{padding:var(--s1) var(--s2) var(--s1) 0;border:0}
+.grid-t td:last-child{padding-right:0}
+.num{font-variant-numeric:tabular-nums;white-space:nowrap}
+.dim{color:var(--dim)}
+.bar-cell{width:100%}
+.grid-t.tz{margin-top:var(--s3)}
+.grid-t.tz th{width:56px}
+
+.bar{height:5px;background:var(--panel2);overflow:hidden}
+.bar i{display:block;height:100%;background:var(--accent);transition:width .5s linear}
+.bar.lg{height:10px;background:var(--bg)}
+.bar.done i{background:var(--ok)}
+
+.note{font-size:var(--fs-2);color:var(--dim);margin:var(--s2) 0 0}
+.warn-note{padding:var(--s2) var(--s3);background:var(--panel2);border-left:2px solid var(--warn);color:var(--fg)}
+.ok-note{padding:var(--s2) var(--s3);background:var(--panel2);border-left:2px solid var(--ok);color:var(--fg)}
+.backup-card input[type=file]{width:100%;padding:var(--s2);background:var(--bg);border:1px solid var(--line);color:var(--fg);font-size:var(--fs-2)}
+.restore-card{border-left:2px solid var(--bad)}.backup-card .kv{margin-bottom:0}
+.alert-text{font-size:var(--fs-3);color:var(--bad);margin:var(--s2) 0 0}
+
+/* Calendar */
+.cal{display:grid;grid-template-columns:repeat(7,1fr);gap:var(--s1)}
+.cal-h{text-align:center;font-size:var(--fs-1);
+  color:var(--dim);padding-bottom:var(--s1)}
+.cal-d{aspect-ratio:1;display:flex;align-items:center;justify-content:center;
+  border:1px solid transparent;background:var(--panel2);
+  color:var(--dim);font:inherit;font-size:var(--fs-3);font-variant-numeric:tabular-nums;
+  padding:0;cursor:default}
+.cal-d.avail{background:color-mix(in srgb,var(--accent) 13%,transparent);border-color:color-mix(in srgb,var(--accent) 45%,transparent);
+  color:var(--fg);cursor:pointer}
+.cal-d.avail:hover{background:color-mix(in srgb,var(--accent) 28%,transparent);border-color:var(--accent)}
+.cal-d.obs{border-style:dashed}
+.cal-d.cap{background:color-mix(in srgb,var(--warn) 14%,transparent);border-color:color-mix(in srgb,var(--warn) 50%,transparent);color:var(--warn)}
+.cal-d.sel{background:var(--accent);border-color:var(--accent);color:var(--on-accent);font-weight:600}
+.cal-d.range{background:color-mix(in srgb,var(--accent) 32%,transparent);border-color:color-mix(in srgb,var(--accent) 65%,transparent);color:var(--fg)}
+.cal-d.empty-state{background:none;border:none}
+
+.legend-swatch{display:grid;grid-template-columns:auto 1fr auto 1fr;gap:var(--s1) var(--s2);
+  margin:var(--s4) 0 0;font-size:var(--fs-2);color:var(--dim);align-items:center}
+.legend-swatch dt{width:10px;height:10px;}
+.legend-swatch dd{margin:0}
+.k-av{background:color-mix(in srgb,var(--accent) 40%,transparent);border:1px solid color-mix(in srgb,var(--accent) 60%,transparent)}
+.k-obs{background:color-mix(in srgb,var(--accent) 10%,transparent);border:1px dashed color-mix(in srgb,var(--accent) 60%,transparent)}
+.k-cap{background:color-mix(in srgb,var(--warn) 40%,transparent);border:1px solid var(--warn)}
+.k-no{background:var(--panel2);border:1px solid var(--line)}
+
+.pager{display:flex;align-items:center;gap:var(--s2)}
+.pager span{font-size:var(--fs-3);font-weight:600;min-width:112px;text-align:center}
+.pager button{width:24px;height:24px;border:1px solid var(--line);background:var(--panel2);
+  color:var(--fg);cursor:pointer;font-size:var(--fs-4);line-height:1;padding:0}
+.pager button:disabled{opacity:.3;cursor:default}
+
+/* Form */
+.kv{display:grid;grid-template-columns:auto 1fr;gap:var(--s1) var(--s4);margin:0 0 var(--s4);font-size:var(--fs-3)}
+.kv dt{font-size:var(--fs-2);color:var(--dim);
+  align-self:center}
+.kv dd{margin:0;font-variant-numeric:tabular-nums}
+
+.field{margin-bottom:var(--s3)}
+.field:last-of-type{margin-bottom:0}
+.field label{display:block;font-size:var(--fs-1);
+  color:var(--dim);margin-bottom:var(--s1)}
+.field-row{display:grid;grid-template-columns:1fr 1fr 1fr;gap:var(--s2);margin-bottom:var(--s3)}
+.field-row .field{margin-bottom:0}
+@media (max-width:480px){ .field-row{grid-template-columns:1fr} }
+
+.seg{display:flex;border:1px solid var(--line);overflow:hidden}
+.seg button{flex:1;background:var(--panel2);border:0;border-right:1px solid var(--line);
+  color:var(--dim);padding:var(--s2) var(--s2);font:inherit;font-size:var(--fs-3);cursor:pointer}
+.seg button:last-child{border-right:0}
+.seg button:hover:not(:disabled):not(.on){color:var(--fg)}
+.seg button.on{background:var(--accent);color:var(--on-accent);font-weight:600}
+.seg button:disabled{opacity:.35;cursor:default}
+
+.quick{display:flex;align-items:center;gap:var(--s2);flex-wrap:wrap;margin-bottom:var(--s3)}
+.quick span{font-size:var(--fs-1);color:var(--dim);
+  margin-right:2px}
+.quick button{background:none;border:1px solid var(--line);color:var(--dim);
+  padding:var(--s1) var(--s2);font:inherit;font-size:var(--fs-2);cursor:pointer}
+.quick button:hover{border-color:var(--accent);color:var(--accent)}
+
+/* Two 24-hour selects instead of a native time input. */
+.tfield{display:flex;align-items:center;gap:var(--s1)}
+.tfield select{width:auto;flex:1;min-width:0;text-align:center}
+.tfield span{color:var(--dim);font-weight:600}
+
+/* Time bases side by side rather than stacked. */
+.tz-row{display:grid;grid-template-columns:repeat(3,1fr);gap:var(--s1);margin-bottom:var(--s3);
+  background:var(--line);border:1px solid var(--line);overflow:hidden}
+.tz-row>div{background:var(--panel);padding:var(--s2) var(--s2)}
+.tz-l{display:block;font-size:var(--fs-1);
+  color:var(--dim);margin-bottom:var(--s1)}
+.tz-v{font-size:var(--fs-3);font-variant-numeric:tabular-nums;white-space:nowrap}
+
+/* Action row: the primary sits left, progress fills the space beside it. */
+.submit{display:flex;align-items:center;gap:var(--s4);margin-top:var(--s4);
+  padding-top:var(--s4);border-top:1px solid var(--line)}
+.primary{border:0;padding:var(--s2) var(--s5);font:inherit;font-size:var(--fs-3);
+  font-weight:600;cursor:pointer;white-space:nowrap;text-decoration:none;
+  display:inline-flex;align-items:center;gap:var(--s2)}
+.primary.go{background:var(--ok);color:var(--on-ok)}
+.primary:hover:not(:disabled){filter:brightness(1.1)}
+.primary:disabled{opacity:.3;cursor:default;filter:none}
+.submit-info{flex:1;min-width:0}
+.submit-line{display:flex;justify-content:space-between;gap:var(--s2);font-size:var(--fs-2);
+  margin-bottom:var(--s2);white-space:nowrap;overflow:hidden}
+.submit-line .mono{overflow:hidden;text-overflow:ellipsis}
+.submit-foot{display:flex;align-items:center;gap:var(--s3);font-size:var(--fs-2);
+  color:var(--dim);margin-top:var(--s2);font-variant-numeric:tabular-nums}
+.submit-foot span:nth-child(2){flex:1}
+.est{font-size:var(--fs-2);color:var(--dim);font-variant-numeric:tabular-nums}
+@media (max-width:520px){ .submit{flex-direction:column;align-items:stretch}
+  .primary{justify-content:center} }
+
+/* Result */
+.result{margin-top:var(--s4);border:1px solid var(--line);padding:var(--s3);
+  background:var(--panel2)}
+.result.done{border-color:color-mix(in srgb,var(--ok) 50%,transparent)}
+.result.error{border-color:color-mix(in srgb,var(--bad) 50%,transparent)}
+.result.cancelled{border-color:color-mix(in srgb,var(--warn) 50%,transparent)}
+.result-h{display:flex;justify-content:space-between;align-items:center;gap:var(--s2);
+  font-size:var(--fs-3);margin-bottom:var(--s2)}
+
+.link-btn{background:none;border:0;color:var(--dim);font:inherit;font-size:var(--fs-2);
+  cursor:pointer;padding:0;text-decoration:underline;text-underline-offset:2px}
+.link-btn:hover{color:var(--fg)}
+
+/* ------------------------------------------------------------- instruments
+   The skyplot and the SNR bars are drawn in app.js as SVG, and the history
+   heatmap as a canvas. Only colour, type family and state live here; every
+   geometry decision is in the drawing code, where the numbers mean something.
+   The skyplot's own type sizes are attributes on the elements: they are user
+   units in a 0-100 viewBox, not screen pixels, so they are not a type step. */
+.skyplot-svg{display:block;width:100%;height:100%}
+.sky-face{fill:var(--bg);stroke:var(--line);stroke-width:.3}
+.sky-ring{fill:none;stroke:var(--line);stroke-width:.25;opacity:.85}
+.sky-mask{fill:none;stroke:var(--bad);stroke-width:.4;stroke-dasharray:1.8 1.6;opacity:.6}
+.sky-tick{fill:var(--dim);font-family:var(--mono)}
+.sky-cardinal{fill:var(--fg);font-family:var(--sans);font-weight:600}
+.sky-sat{cursor:pointer}
+.sky-dot{stroke:var(--panel);stroke-width:.3}
+.sky-label{fill:var(--on-accent);font-family:var(--mono);font-weight:600;pointer-events:none}
+.sky-sat.low .sky-dot{opacity:.55}
+.sky-sat.dim{opacity:.25}
+.sky-sat:hover .sky-dot{stroke:var(--fg);stroke-width:.5}
+.snr-host{position:relative;width:100%;height:100%}
+.snr-grid{stroke:var(--line);opacity:.5}
+.snr-tick,.snr-name,.snr-axis{fill:var(--dim);font-family:var(--mono);font-size:var(--fs-1)}
+.snr-value{fill:var(--on-accent);font-family:var(--mono);font-weight:600;font-size:var(--fs-1);pointer-events:none}
+.snr-bar{cursor:pointer}
+.snr-bar.low rect{opacity:.6}
+.snr-bar.dim,.snr-name.dim{opacity:.28}
+.instrument-hover{margin-left:auto;color:var(--fg);font-size:var(--fs-1);white-space:nowrap}
+
+/* uPlot brings its own layout; these are the token overrides that make it
+   look like the rest of the instrument surfaces. */
+.history-chart>.uplot-host{height:auto}
+.uplot-host{width:100%;min-width:0}
+.uplot-host .u-title,.uplot-host .u-legend{color:var(--dim);font-family:var(--mono);font-size:var(--fs-1)}
+.uplot-host .u-legend .u-value{color:var(--fg)}
+.uplot-host .u-cursor-pt{box-shadow:none}
+.heatmap-host{position:relative;width:100%;height:100%}
+.heatmap-tip{position:absolute;transform:translate(var(--s2),-100%);pointer-events:none;display:grid;
+  background:var(--panel2);border:1px solid var(--line);padding:var(--s1) var(--s2);
+  font-size:var(--fs-1);box-shadow:var(--shadow);white-space:nowrap;z-index:2}
+.heatmap-tip b{color:var(--fg)}
+.history-chart>.heatmap-legend{height:auto}
+.heatmap-legend{display:flex;align-items:center;gap:var(--s2);margin-top:var(--s2);
+  color:var(--dim);font-size:var(--fs-1)}
+.heatmap-legend i{flex:1;height:8px;border:1px solid var(--line)}
+.history-chart>.host-stack{height:auto}
+.host-stack{display:grid;gap:var(--s3)}
+.host-track{position:relative;min-width:0}
+.host-track-label{position:absolute;top:0;left:var(--s6);z-index:1;color:var(--dim);font-size:var(--fs-1)}
+
+/* The submit in a form is the primary action; Tabler's outline button is the
+   default for everything else, which is what makes the primary one read. */
+button.act[type="submit"]{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
+button.act[type="submit"]:hover{border-color:var(--accent);color:var(--on-accent);filter:brightness(1.07)}
+button.act[type="submit"]:disabled{filter:none}
+
+/* Tabler's table cell padding is generous for a page of readings; this keeps
+   its borders and hover and gives back the rows. */
+.table>:not(caption)>*>*{padding:var(--s1) var(--s2)}
+
+/* ------------------------------------------------------------- panel tiles
+   Twelve columns the panels claim a span of, a grip that appears on hover to
+   drag one into another position, and a corner to pull. The height lives in
+   --tile-h and is applied to the instrument inside, so the card's own heading
+   and readouts keep their natural size. */
+.tile-grid{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:var(--s2);align-items:start}
+.tile{position:relative;grid-column:span var(--span);min-width:0}
+.tile>.card{height:100%;margin:0}
+.tile .plot-host,.tile .map-host,.tile .epoch-summary{height:var(--tile-h)}
+.tile.dragging{opacity:.5}
+/* The panel a drag would change places with. */
+.tile.swap-target>.card{outline:2px solid var(--accent);outline-offset:2px}
+.tile-grip,.tile-handle{position:absolute;opacity:0;transition:opacity .12s;touch-action:none}
+.tile:hover .tile-grip,.tile-grip:focus-visible,.tile.dragging .tile-grip{opacity:1}
+/* A pull that leaves the panel must not start selecting the page behind it. */
+.tile-grid.resizing{user-select:none}
+.tile-grip{top:var(--s2);right:var(--s2);width:24px;height:24px;display:grid;place-items:center;padding:0;
+  border:1px solid var(--line);border-radius:var(--r-control);background:var(--panel);color:var(--dim);cursor:grab}
+.tile-grip:hover{color:var(--accent);border-color:var(--accent)}
+.tile-grip svg{width:16px;height:16px;fill:currentColor}
+
+/* Eight handles: an edge moves one dimension, a corner both. They are strips
+   over the panel's own border, invisible until the pointer is on one -- the
+   cursor is the affordance, and eight permanent marks on every panel would be
+   noise. The bottom-right corner keeps the pull mark it has always had, so
+   there is still something to see without hunting for it.
+   Each is 8px of target over a 1px border, which is small; they are corners
+   and edges, and the pointer is already going there. */
+.tile-handle:hover,.tile-handle.active{opacity:1}
+.tile-handle::after{content:"";position:absolute;background:var(--accent)}
+.tile-n,.tile-s{left:14px;right:14px;height:8px;cursor:ns-resize}
+.tile-e,.tile-w{top:14px;bottom:14px;width:8px;cursor:ew-resize}
+.tile-n{top:-3px}.tile-s{bottom:-3px}.tile-e{right:-3px}.tile-w{left:-3px}
+.tile-n::after,.tile-s::after{left:0;right:0;height:2px}
+.tile-e::after,.tile-w::after{top:0;bottom:0;width:2px}
+.tile-n::after{top:2px}.tile-s::after{bottom:2px}
+.tile-e::after{right:2px}.tile-w::after{left:2px}
+.tile-nw,.tile-ne,.tile-sw{width:14px;height:14px}
+.tile-nw{top:-3px;left:-3px;cursor:nwse-resize}
+.tile-ne{top:-3px;right:-3px;cursor:nesw-resize}
+.tile-sw{bottom:-3px;left:-3px;cursor:nesw-resize}
+.tile-nw::after,.tile-ne::after,.tile-sw::after{width:8px;height:2px;top:4px}
+.tile-nw::after{left:4px;box-shadow:2px 3px 0 -1px var(--accent),2px 6px 0 -2px var(--accent)}
+.tile-ne::after{right:4px;box-shadow:-2px 3px 0 -1px var(--accent),-2px 6px 0 -2px var(--accent)}
+.tile-sw::after{left:4px;top:8px;box-shadow:2px -3px 0 -1px var(--accent),2px -6px 0 -2px var(--accent)}
+/* The one that was always there, and the only one drawn without being hovered. */
+.tile-se{right:0;bottom:0;width:18px;height:18px;cursor:nwse-resize;
+  background:linear-gradient(135deg,transparent 54%,var(--line) 54%,var(--line) 66%,
+    transparent 66%,transparent 78%,var(--line) 78%,var(--line) 90%,transparent 90%)}
+.tile:hover .tile-se{opacity:1}
+.tile-se:hover,.tile-se.active{background:linear-gradient(135deg,transparent 54%,var(--accent) 54%,var(--accent) 66%,
+    transparent 66%,transparent 78%,var(--accent) 78%,var(--accent) 90%,transparent 90%)}
+.tile-se::after{display:none}
+.tile-reset{margin-left:auto;padding:var(--s1) var(--s2);font-size:var(--fs-2)}
+@media(max-width:900px){.tile{grid-column:1/-1}.tile-grip,.tile-handle{display:none}}

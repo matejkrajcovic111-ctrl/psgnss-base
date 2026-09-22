@@ -1,0 +1,60 @@
+[Unit]
+Description=PSGNSS_base GNSS base station suite
+Documentation={{ .Documentation }}
+After=network-online.target
+Wants=network-online.target
+{{- if .ArchiveMount }}
+# The archive is flushed here. Wanted, not Required: a wedged share must never
+# keep the station that owns the receiver from starting.
+Wants={{ .ArchiveMountUnit }}
+After={{ .ArchiveMountUnit }}
+{{- end }}
+{{- range .Conflicts }}
+# The hub owns the receiver. Nothing else may hold the serial port.
+Conflicts={{ . }}
+{{- end }}
+
+[Service]
+Type=simple
+ExecStart={{ .Binary }} --config {{ .ConfigFile }}
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=always
+RestartSec=5
+
+# Needs root for the serial port and the privileged secrets directory.
+User=root
+Group=root
+UMask=0027
+
+StateDirectory=psgnss
+LogsDirectory=psgnss
+RuntimeDirectory=psgnss
+
+# --- Hardening ---
+NoNewPrivileges=yes
+ProtectSystem=strict
+# ProtectSystem=strict makes the whole filesystem read-only except these.
+# The archive mount MUST be listed or every write to the share fails with
+# "read-only file system" while the mount itself is rw -- which is silent
+# unless you read the logs. The leading "-" keeps the service startable when
+# the share is not mounted.
+ReadWritePaths={{ .Var }} {{ .Log }} {{ .Etc }}
+{{- if .ArchiveMount }}
+ReadWritePaths=-{{ .ArchiveMount }}
+{{- end }}
+ProtectHome=yes
+PrivateTmp=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+# Serial port access.
+DeviceAllow=char-ttyACM rw
+SupplementaryGroups=dialout
+
+[Install]
+WantedBy=multi-user.target

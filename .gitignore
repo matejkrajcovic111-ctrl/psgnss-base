@@ -1,0 +1,21 @@
+# Secrets — never commit.
+#
+# "secrets/" without the leading slash would also match internal/secrets, which
+# is the package that manages the master key rather than a place one is kept.
+# A clone then builds nothing and the reason is invisible: git says only that
+# the directory is ignored. Anchor it.
+/secrets/
+*.key
+*.pem
+*.token
+.env
+
+# Build output
+/dist/
+
+# Go
+*.test
+*.out
+
+# The UI harness writes these while it runs
+tools/uicheck/.server.pid
