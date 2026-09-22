@@ -12,4 +12,12 @@ var (
 // and those must not be allowed to drift apart or point somewhere stale.
 const ProjectURL = "https://github.com/matejkrajcovic111-ctrl/psgnss-base"
 
-func String() string { return Version + " (" + Commit + ")" }
+// String names the build. A source tarball carries no git metadata, so a
+// station installed from the published one-liner has no commit to report;
+// "v1.0.0" reads better there than "v1.0.0 (unknown)".
+func String() string {
+	if Commit == "" || Commit == "unknown" {
+		return Version
+	}
+	return Version + " (" + Commit + ")"
+}

@@ -51,7 +51,10 @@ die()  { printf '\n\033[1;31mInstall stopped:\033[0m %s\n\n' "$*" >&2; exit 1; }
 # whenever /dev is mounted, and opening it still fails with "no such device or
 # address" when the process has no controlling terminal -- which is exactly the
 # case this matters for. The only reliable check is to open it.
-open_tty() { exec 3</dev/tty 2>/dev/null; }
+# The redirection order matters: `exec 3</dev/tty 2>/dev/null` applies the
+# 3< first, so a failure is reported to the still-unredirected stderr and the
+# operator sees "No such device or address" for something that is handled.
+open_tty() { { exec 3</dev/tty; } 2>/dev/null; }
 close_tty() { exec 3<&- 2>/dev/null || true; }
 
 # ---------------------------------------------------------------- preflight
@@ -178,7 +181,7 @@ BIN="$WORKDIR/psgnssd"
   cd "$SRC"
   CGO_ENABLED=0 go build -trimpath -buildvcs=false \
     -ldflags "-s -w -buildid= \
-      -X github.com/psgnss/psgnss-base/internal/version.Version=$(git -C "$SRC" describe --tags --always --dirty 2>/dev/null || echo "$REF") \
+      -X github.com/psgnss/psgnss-base/internal/version.Version=$(git -C "$SRC" describe --tags --always --dirty 2>/dev/null || cat "$SRC/VERSION" 2>/dev/null || echo "$REF") \
       -X github.com/psgnss/psgnss-base/internal/version.Commit=$(git -C "$SRC" rev-parse --short HEAD 2>/dev/null || echo unknown)" \
     -o "$BIN" ./cmd/psgnssd
 ) || die "the build failed. The output above says why."

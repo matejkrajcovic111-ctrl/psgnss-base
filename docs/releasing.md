@@ -35,6 +35,11 @@ make release                                      # refuses a dirty tree
 make sign-release BASE=https://host/path/v0.7.0 NOTES="..."
 ```
 
+Bump `VERSION` at the repo root first and tag the commit to match. `VERSION`
+is what a build falls back to when there is no git metadata, which is the case
+for anyone installing from the published tarball: without it they get the
+branch name as a version.
+
 `make release` builds twice and confirms the hashes match. It refuses to build
 from a dirty working tree, because the version string is baked in at link time:
 a binary built mid-edit reports the last commit plus `-dirty`, and then
