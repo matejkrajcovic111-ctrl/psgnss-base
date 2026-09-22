@@ -1,16 +1,17 @@
 # Configuration
 
-`/etc/psgnss/psgnss.toml`. `psgnssd --setup` writes it; the Settings page edits
-it; `configs/psgnss.example.toml` documents every key inline.
+Everything lives in `/etc/psgnss/psgnss.toml`. `psgnssd --setup` writes it, the
+Settings page edits it, and `configs/psgnss.example.toml` documents every key
+inline.
 
 ```sh
 psgnssd --check --config /etc/psgnss/psgnss.toml
 ```
 
-Validation is strict on purpose. **An unknown key is fatal** — a typo like
-`retention_dayz` stops startup rather than silently using a default you think
-you changed. Several rules refuse configurations that would work but produce
-quietly wrong data.
+Validation is deliberately strict. An unknown key is fatal, so a typo like
+`retention_dayz` stops startup instead of quietly using the default you thought
+you'd changed. A few rules also reject settings that would work but produce
+wrong data without telling you.
 
 ---
 
@@ -18,9 +19,9 @@ quietly wrong data.
 
 | Key | Notes |
 |---|---|
-| `name` | Names the station in the UI and, by convention, its mountpoints |
-| `station_id` | **Must match what the receiver stamps into its observations.** 0 unless you are also writing `CFG-RTCM DF003`. A mismatch gives rovers a healthy stream they can never fix on |
-| `antenna` | Broadcast in RTCM 1008. The surveyed coordinate was derived against a particular antenna; changing this without re-surveying is a lie about the data |
+| `name` | Names the station in the UI, and by convention its mountpoints |
+| `station_id` | Has to match what the receiver stamps into its observations. Use 0 unless you're also writing `CFG-RTCM DF003`. A mismatch gives rovers a healthy stream they can never fix on |
+| `antenna` | Broadcast in RTCM 1008. Your surveyed coordinate was derived against a particular antenna, so changing this without re-surveying is a lie about the data |
 | `receiver` | Broadcast in RTCM 1033. Blank omits it |
 
 ### `[station.position]`
@@ -29,10 +30,15 @@ quietly wrong data.
 |---|---|
 | `mode` | `fixed` or `survey_in` |
 | `format` | `llh` or `ecef`. LLH is exactly representable and is the default |
-| `latitude`, `longitude`, `height` | Degrees and ellipsoidal metres. **An error here moves every measured point by the same amount, silently.** Use a surveyed coordinate in a consistent reference frame — an official ETRS89 realisation for European control, WGS-84 only when your survey really is WGS-84. They are not interchangeable at centimetre precision |
-| `enu_offset` | Antenna reference point offset, metres. Zero unless you have a calibration |
+| `latitude`, `longitude`, `height` | Degrees and ellipsoidal metres |
+| `enu_offset` | Antenna reference point offset in metres. Leave at zero unless you have a calibration |
 
-Validation refuses `mode = "fixed"` with an unset position.
+Get the position wrong and every point anyone measures moves by the same
+amount, silently. Use a surveyed coordinate in a consistent reference frame: an
+official ETRS89 realisation for European control, and WGS-84 only if your
+survey really is WGS-84. They aren't interchangeable at centimetre precision.
+
+Validation rejects `mode = "fixed"` with no position set.
 
 ---
 
@@ -40,22 +46,22 @@ Validation refuses `mode = "fixed"` with an unset position.
 
 | Key | Notes |
 |---|---|
-| `device` | **Always a `/dev/serial/by-id/…` path.** `/dev/ttyACM0` is assignment-order dependent: add a second USB serial device, or reboot with one attached, and the name moves. A station addressing its receiver that way will one day configure something else |
-| `baud` | 9600 … 921600 |
+| `device` | Use a `/dev/serial/by-id/…` path. `/dev/ttyACM0` depends on enumeration order, so adding a second USB serial device or rebooting with one attached moves the name, and eventually you configure the wrong receiver |
+| `baud` | 9600 through 921600 |
 | `profile` | Board profile ID; see the table in the README |
 | `model` | Expected receiver model |
-| `verify_model` | Refuse to start if the receiver reports a different model |
+| `verify_model` | Refuse to start if the receiver reports something else |
 | `revert_timeout` | Seconds before an unconfirmed configuration write rolls back |
 
 ---
 
 ## `[hub]`
 
-Owns the serial port. `input` is `serial` in production; `tcp` and `file` exist
-so the hub can run beside another tool for comparison, or replay a capture.
+Owns the serial port. `input` is `serial` in production. `tcp` and `file` exist
+so the hub can run alongside another tool for comparison, or replay a capture.
 
-`[[hub.listener]]` repeats the stream on a TCP port with an optional protocol
-filter (`none`, `rtcm3`, `ubx`).
+`[[hub.listener]]` repeats the stream on a TCP port, optionally filtered to one
+protocol (`none`, `rtcm3`, `ubx`).
 
 ---
 
@@ -64,14 +70,14 @@ filter (`none`, `rtcm3`, `ubx`).
 | Key | Notes |
 |---|---|
 | `listen` | NTRIP caster address |
-| `proxy_listen` | A second listener speaking PROXY protocol v1/v2, for traffic arriving through a reverse proxy. Built, and off unless something is in front of you |
-| `proxy_trusted` | CIDRs allowed to send a PROXY header. Empty means nothing is trusted |
+| `proxy_listen` | A second listener speaking PROXY protocol v1/v2, for traffic arriving through a reverse proxy. It's built and off unless you have something in front |
+| `proxy_trusted` | CIDRs allowed to send a PROXY header. Empty trusts nobody |
 | `ntrip_v1`, `ntrip_v2` | ICY and chunked HTTP |
 | `operator`, `country`, `format_string`, `carrier` | Sourcetable fields. Make them describe the stream you actually serve |
 
 ### `[[caster.mountpoint]]`
 
-A mountpoint is a **filter**, not a transformation.
+A mountpoint filters; it doesn't transform.
 
 ```toml
 [[caster.mountpoint]]
@@ -88,12 +94,13 @@ messages    = [
 ]
 ```
 
-`interval` is decimation in seconds; 1 is every epoch. Adding 1019, 1042 or
-1046 turns on synthesised ephemeris for that mountpoint, at about 0.5 kbit/s —
-a rover that already holds an ephemeris ignores them, one that does not starts
-faster.
+`interval` is decimation in seconds, so 1 means every epoch.
 
-`nav_system` should name what the stream carries and nothing else.
+Adding 1019, 1042 or 1046 turns on synthesised ephemeris for that mountpoint at
+roughly 0.5 kbit/s. A rover that already has an ephemeris ignores them; one
+that doesn't gets going faster.
+
+`nav_system` should list what the stream carries and nothing more.
 
 ---
 
@@ -102,19 +109,19 @@ faster.
 | Key | Notes |
 |---|---|
 | `spool_dir` | Local disk. Everything is written here first |
-| `mount_point` | Where the share is mounted. Empty means local-only |
-| `sync_every_sec` | How often new bytes are appended to the share. Only the new bytes are copied |
+| `mount_point` | Where the share is mounted. Empty means local only |
+| `sync_every_sec` | How often new bytes are appended to the share. Only the new bytes get copied |
 | `retention_days` | 0 disables pruning |
 
 `[archive.rtcm]`, `[archive.ubx]` and `[archive.nav]` are three independent
-writers with their own pattern, subdirectory, rotation and filter.
+writers, each with its own pattern, subdirectory, rotation and filter.
 
-- **`rtcm`** is the replayable correction stream.
-- **`nav`** records `RXM-SFRBX` and `RXM-RAWX` — the RINEX navigation source.
-  Smaller than a full UBX log, and sufficient.
-- **`ubx`** is the whole raw stream, off by default.
+- `rtcm` is the replayable correction stream.
+- `nav` records `RXM-SFRBX` and `RXM-RAWX`, which is what RINEX navigation
+  needs. Much smaller than a full UBX log and sufficient.
+- `ubx` is the whole raw stream, off by default.
 
-Patterns use `%Y%m%d` and `%h`, **generated in UTC**.
+Patterns use `%Y%m%d` and `%h`, generated in UTC.
 
 ---
 
@@ -123,15 +130,16 @@ Patterns use `%Y%m%d` and `%h`, **generated in UTC**.
 | Key | Notes |
 |---|---|
 | `convbin_path` | RTKLIB's converter |
-| `frequencies` | convbin's `-f`. **4 on a ZED-X20P**; less silently loses constellations and startup refuses it |
+| `frequencies` | convbin's `-f`. Use 4 on a ZED-X20P; anything less quietly loses constellations, and startup refuses it |
 | `version`, `raw_format`, `output_dir`, `compression` | |
 
 ---
 
 ## `[telemetry]`
 
-One compact blob per epoch. `fine_rate_hz` for the last `fine_window_min`, then
-`coarse_interval` beyond it. `retention_days` bounds the database.
+One compact blob per epoch. `fine_rate_hz` applies for the last
+`fine_window_min`, then `coarse_interval` beyond that. `retention_days` bounds
+the database.
 
 ---
 
@@ -142,14 +150,14 @@ One compact blob per epoch. `fine_rate_hz` for the last `fine_window_min`, then
 | `listen` | The UI and API |
 | `display_hidden_constellations` | Which systems start hidden on the dashboard |
 | `diagnostics_auto`, `diagnostics_interval_minutes` | Run the self-check on a schedule |
-| `map_tiles` | An XYZ template, https, with `{z}`/`{x}`/`{y}`. **The browser never fetches it** — psgnssd proxies and caches tiles so it can identify this station in a User-Agent, which a browser cannot do and OpenStreetMap's usage policy requires. Empty means no map |
-| `map_attribution` | Required with a tile source. Providers ask for credit; OSM's policy insists |
+| `map_tiles` | An XYZ template over https with `{z}`, `{x}` and `{y}`. The browser never fetches it: psgnssd proxies and caches tiles so it can identify the station in a User-Agent, which a browser can't do and OpenStreetMap's usage policy requires. Empty means no map |
+| `map_attribution` | Required if you set a tile source. Providers ask for credit and OSM's policy insists |
 | `map_contact` | Goes into the outgoing User-Agent so a provider can ask you to stop |
-| `map_cache_dir`, `map_cache_days` | Caching is part of the policy, not an optimisation |
+| `map_cache_dir`, `map_cache_days` | Caching is part of the policy here, not an optimisation |
 
-> If you point `map_tiles` at OpenStreetMap's own servers and then publish your
-> UI, you are putting a public audience on donated infrastructure. Use a
-> provider you pay or one you host.
+If you point `map_tiles` at OpenStreetMap's own servers and then publish your
+UI, you're putting a public audience on donated infrastructure. Use a provider
+you pay for, or one you host.
 
 ---
 
@@ -157,7 +165,7 @@ One compact blob per epoch. `fine_rate_hz` for the last `fine_window_min`, then
 
 | Key | Notes |
 |---|---|
-| `manifest_url` | https URL of the signed release envelope. Empty means this station is updated by hand, which is the default |
+| `manifest_url` | https URL of the signed release envelope. Empty means the station is updated by hand, which is the default |
 | `service_unit` | Restarted after a successful install |
 | `binary_path` | What gets replaced. Empty means the running executable |
 
@@ -165,21 +173,23 @@ One compact blob per epoch. `fine_rate_hz` for the last `fine_window_min`, then
 
 ## `[security]` and `[logging]`
 
-`key_file` is the AES-256 master key for reversible NTRIP password storage,
-root-only and 0600. **It is equivalent to every stored password at once.**
+`key_file` is the AES-256 master key used for reversible NTRIP password
+storage, root-only and 0600. It's equivalent to every stored password at once,
+so treat it that way.
 
-`logging.level` is `debug`, `info`, `warn` or `error`; `dir` is where the
-rotating log lives.
+`logging.level` is `debug`, `info`, `warn` or `error`, and `dir` is where the
+rotating log file lives.
 
 ---
 
 ## `[timesync]` and `[[rtcm_out]]`
 
 `timesync.chrony_socket` offers receiver time to chrony's SOCK refclock. Empty
-means off, which is the default: it writes to a socket another service owns and
-should never start doing so after an upgrade alone. This is USB-timestamped
-time — good to a few milliseconds, not PPS. `deploy/chrony-psgnss.conf`
-explains the `precision` and `delay` values, which are not decoration.
+means off, which is the default, since it writes to a socket another service
+owns and shouldn't start doing that after an upgrade alone. This is
+USB-timestamped time, good to a few milliseconds rather than PPS.
+`deploy/chrony-psgnss.conf` explains the `precision` and `delay` values, which
+matter more than they look like they do.
 
 `[[rtcm_out]]` sends a mountpoint's exact bytes to a UDP target or a serial
-radio. `kind` is `udp` (with `target`) or `serial` (with `device` and `baud`).
+radio. `kind` is `udp` with a `target`, or `serial` with a `device` and `baud`.
