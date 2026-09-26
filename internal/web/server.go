@@ -247,7 +247,7 @@ func (s *Server) securityHeaders(next http.Handler) http.Handler {
 		if strings.HasPrefix(r.URL.Path, "/api/") {
 			h.Set("Cache-Control", "no-store")
 		} else if r.URL.Path == "/" || r.URL.Path == "/index.html" ||
-			r.URL.Path == "/app.js" || r.URL.Path == "/app.css" {
+			r.URL.Path == "/app.js" || r.URL.Path == "/app.css" || r.URL.Path == "/i18n.js" {
 			// These files define the application shell. Never let a browser keep
 			// running an old shell against a newly deployed API.
 			h.Set("Cache-Control", "no-store, max-age=0")

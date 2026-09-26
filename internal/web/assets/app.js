@@ -71,7 +71,7 @@ function StationMap({ position, map, coverage }) {
       }else{
         marker.current.setLatLng([lat,lon]);
       }
-      marker.current.bindTooltip('Base antenna',{permanent:false});
+      marker.current.bindTooltip(t('Base antenna'),{permanent:false});
       /* The working range is why this map is zoomed out at all: an antenna on
          its own needs no map. The view is fitted to the circle once per radius
          so that a two-second telemetry poll does not undo the operator's own
@@ -88,9 +88,9 @@ function StationMap({ position, map, coverage }) {
         if(ring.current){ ring.current.remove(); ring.current=null; fitted.current=0; }
         instance.current.setView([lat,lon],instance.current.getZoom());
       }
-    }).catch(e=>{if(active)setErr(e.message||'Could not load the map engine')});
+    }).catch(e=>{if(active)setErr(e.message||t('Could not load the map engine'))});
     return ()=>{active=false};
-  },[tiles,attribution,lat,lon,rangeKM]);
+  },[tiles,attribution,lat,lon,rangeKM,LANG]);
   useEffect(()=>()=>{if(instance.current){instance.current.remove();instance.current=null}},[]);
   /* The panel can be resized under the map, and Leaflet only measures its
      container when it is told to. */
@@ -103,15 +103,15 @@ function StationMap({ position, map, coverage }) {
   },[]);
   if(lat==null||lon==null)return null;
   return html`<div class="card plot-card map-card">
-    <h2>Base Position and Working Range</h2>
-    ${!tiles?html`<p class="note map-note">No tile source configured, so no map is shown. Settings → Station and service can set one.</p>`
+    <h2>${t("Base Position and Working Range")}</h2>
+    ${!tiles?html`<p class="note map-note">${t("No tile source configured, so no map is shown. Settings → Station and service can set one.")}</p>`
       :err?html`<p class="err map-note">${err}</p>`
       :html`<div class="map-host" ref=${host}></div>`}
     ${rangeKM>0?html`<div class="map-range" title=${coverage.note}>
-      <b class="mono">Usable range ≈ ${rangeKM} km</b>
-      <span class="muted">${coverage.limit==='accuracy'?'limited by the 50 mm accuracy budget':'limited by ambiguity resolution'} · ${coverage.constellations} constellations · ${coverage.bands} bands</span>
+      <b class="mono">${t('Usable range ≈ {n} km',{n:rangeKM})}</b>
+      <span class="muted">${coverage.limit==='accuracy'?t('limited by the 50 mm accuracy budget'):t('limited by ambiguity resolution')} · ${t('{n} constellations',{n:coverage.constellations})} · ${t('{n} bands',{n:coverage.bands})}</span>
     </div>`:null}
-    <div class="map-readout mono muted">${lat.toFixed(7)}, ${lon.toFixed(7)} · ${position.height.toFixed(3)} m ellipsoidal</div>
+    <div class="map-readout mono muted">${lat.toFixed(7)}, ${lon.toFixed(7)} · ${position.height.toFixed(3)} ${t('m ellipsoidal')}</div>
   </div>`;
 }
 
@@ -149,8 +149,17 @@ function ThemeButton(){
     dark:html`<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z"></path></svg>`,
     auto:html`<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M12 3a9 9 0 0 1 0 18Z"></path></svg>`,
   };
-  return html`<button class="icon-button theme-button" title=${THEME_LABEL[mode]} aria-label=${THEME_LABEL[mode]}
+  return html`<button class="icon-button theme-button" title=${t(THEME_LABEL[mode])} aria-label=${t(THEME_LABEL[mode])}
     onClick=${()=>setMode(THEME_NEXT[mode])}>${icon[mode]}</button>`;
+}
+
+/* The language switch shows the language it switches to. setLang changes the
+   table t() reads; the state change on App re-renders everything under it. */
+function LangButton({ onChange }) {
+  const next = LANG === 'sk' ? 'en' : 'sk';
+  const label = next === 'sk' ? 'Prepnúť do slovenčiny' : 'Switch to English';
+  return html`<button class="icon-button lang-button" title=${label} aria-label=${label}
+    onClick=${() => { setLang(next); onChange(next); }}>${next.toUpperCase()}</button>`;
 }
 
 function useUplot() {
@@ -235,7 +244,7 @@ function UPlotChart({ data, opts, height=220, className='' }) {
     const built={...opts.build(),width:w,height};
     plot.current=new window.uPlot(built,data,host.current);
     return ()=>{if(plot.current){plot.current.destroy();plot.current=null;}};
-  },[ready,w,height,theme,shape]);
+  },[ready,w,height,theme,shape,LANG]);
   useEffect(()=>{if(plot.current)plot.current.setData(data)},[data]);
   /* The host is not given the chart's height: uPlot appends a live legend
      below the canvas, and a fixed box would clip it. */
@@ -422,8 +431,8 @@ function TileGrid({ scope, tiles, reset=0 }) {
           if(from.current&&from.current!==l.id)swap(from.current,l.id);
           from.current=null;setOver(null);setDragging(null)}}>
       ${l.tile.node}
-      <button class="tile-grip" draggable="true" title="Drag onto another panel to change places"
-        aria-label=${'Move '+l.id}
+      <button class="tile-grip" draggable="true" title=${t("Drag onto another panel to change places")}
+        aria-label=${t('Move {id}',{id:l.id})}
         onDragStart=${e=>{from.current=l.id;setDragging(l.id);e.dataTransfer.effectAllowed='move';
           try{e.dataTransfer.setData('text/plain',l.id)}catch{/* Safari */}}}
         onDragEnd=${()=>{from.current=null;setDragging(null);setOver(null)}}>
@@ -431,7 +440,7 @@ function TileGrid({ scope, tiles, reset=0 }) {
       </button>
       ${TILE_HANDLES.map(hd => html`<span key=${hd.d}
         class=${'tile-handle tile-'+hd.d+(resizing&&resizing.id===l.id&&resizing.dir===hd.d?' active':'')}
-        title=${'Drag the '+hd.label+' to resize'}
+        title=${t('Drag the {edge} to resize',{edge:t(hd.label)})}
         onPointerDown=${e=>startResize(e,l.id,hd)}></span>`)}
     </div>`)}
   </div>`;
@@ -459,7 +468,7 @@ function Skyplot({ sats, hovered, onHover }) {
   const placed = sats.filter(s => s.elev > 0 || s.azim > 0)
     .sort((a,b) => bestCNO(a) - bestCNO(b));
   return html`<svg class="skyplot-svg" viewBox="0 0 100 100" preserveAspectRatio="xMidYMid meet"
-      role="img" aria-label="Satellite skyplot">
+      role="img" aria-label=${t("Satellite skyplot")}>
     <circle cx=${SKY_C} cy=${SKY_C} r=${SKY_R} class="sky-face"/>
     ${rings.map(ring => html`<circle key=${ring.elev} cx=${SKY_C} cy=${SKY_C} r=${ring.r} class="sky-ring"/>`)}
     ${[0,45,90,135].map(a => {
@@ -472,7 +481,7 @@ function Skyplot({ sats, hovered, onHover }) {
     ${cardinals.map(([label,azim]) => {
       const p = skyPoint(-8, azim);
       return html`<text key=${label} x=${p.x} y=${p.y} class="sky-cardinal" fontSize="3.4"
-        textAnchor="middle" dominantBaseline="central">${label}</text>`;
+        textAnchor="middle" dominantBaseline="central">${t(label)}</text>`;
     })}
     ${placed.map(s => {
       const p = skyPoint(s.elev, s.azim), key = plotKey(s), cfg = systemStyle(s.system);
@@ -517,7 +526,7 @@ function SNRBars({ sats, hovered, onHover }) {
   });
   const ticks = [0,15,30,45,60];
   return html`<div class="snr-host" ref=${host}>
-    <svg width=${w} height=${h} role="img" aria-label="Signal to noise ratio by band">
+    <svg width=${w} height=${h} role="img" aria-label=${t("Signal to noise ratio by band")}>
       ${ticks.map(t => html`<g key=${t}>
         <line x1=${padL - 4} y1=${yFor(t)} x2=${w - padR} y2=${yFor(t)} class="snr-grid"/>
         <text x=${padL - 7} y=${yFor(t)} textAnchor="end" dominantBaseline="central" class="snr-tick">${t}</text>
@@ -554,19 +563,19 @@ function GNSSPlots({ sats, signals, hiddenSystems=[], side=null, scope='dashboar
     Object.keys(PLOT_SYSTEMS).indexOf(a.system) - Object.keys(PLOT_SYSTEMS).indexOf(b.system) || a.sv - b.sv);
   const hoveredSat = all.find(s => plotKey(s) === hovered);
   const panels=[
-    {id:'skyplot',node:html`<div class="card plot-card"><h2>Satellite skyplot</h2>
+    {id:'skyplot',node:html`<div class="card plot-card"><h2>${t("Satellite skyplot")}</h2>
       <div class="plot-host skyplot-chart">
         <${Skyplot} sats=${all} hovered=${hovered} onHover=${setHovered}/>
       </div></div>`},
     side?{id:'side',node:side}:null,
-    {id:'snr',node:html`<div class="card plot-card"><h2>Multi-band signal-to-noise ratio</h2>
+    {id:'snr',node:html`<div class="card plot-card"><h2>${t("Multi-band signal-to-noise ratio")}</h2>
       <div class="plot-host snr-chart">
         <${SNRBars} sats=${all} hovered=${hovered} onHover=${setHovered}/>
       </div></div>`},
   ].filter(Boolean);
   return html`<div class="gnss-instruments">
-    <div class="constellation-controls" role="group" aria-label="Visible constellations">
-      <span class="control-label">Display</span>
+    <div class="constellation-controls" role="group" aria-label=${t("Visible constellations")}>
+      <span class="control-label">${t("Display")}</span>
       ${Object.entries(PLOT_SYSTEMS).map(([system,cfg]) => {
         const count=sats.filter(s=>s.system===system && s.cno>0).length, on=visible[system];
         return html`<button key=${system} class=${'constellation-toggle '+(on?'on':'off')}
@@ -576,9 +585,9 @@ function GNSSPlots({ sats, signals, hiddenSystems=[], side=null, scope='dashboar
       })}
       ${hoveredSat ? html`<span class="instrument-hover mono">
         ${systemStyle(hoveredSat.system).short}${hoveredSat.sv} · ${hoveredSat.system} ·
-        ${hoveredSat.elev}° elev · ${hoveredSat.azim}° az · ${bestCNO(hoveredSat)} dB-Hz</span>` : null}
+        ${hoveredSat.elev}° ${t('elev')} · ${hoveredSat.azim}° ${t('az')} · ${bestCNO(hoveredSat)} dB-Hz</span>` : null}
       <button class="btn act tile-reset" onClick=${()=>setReset(n=>n+1)}
-        title="Put the panels back where they started">Reset layout</button>
+        title=${t("Put the panels back where they started")}>${t("Reset layout")}</button>
     </div>
     <${TileGrid} scope=${scope} tiles=${panels} reset=${reset}/>
   </div>`;
@@ -587,7 +596,7 @@ function GNSSPlots({ sats, signals, hiddenSystems=[], side=null, scope='dashboar
 /* ------------------------------------------------------------- dashboard */
 
 function Dashboard({ live }) {
-  if (!live) return html`<p class="muted">Loading…</p>`;
+  if (!live) return html`<p class="muted">${t("Loading…")}</p>`;
   const h = live.host || {};
   const sats = live.satellites || [];
   const signals = live.signals || [];
@@ -597,22 +606,22 @@ function Dashboard({ live }) {
   const avgCNO = cn.length ? Math.round(cn.reduce((a,b) => a+b, 0) / cn.length) : 0;
   const masked = trackedSats.filter(s => s.elev > 0 && s.elev < 15).length;
   const gps = live.gps_time || {};
-  const gpsClock = gps.valid ? `GPS W${gps.week} · TOW ${Math.floor(gps.tow)} s` : 'GPS acquiring';
+  const gpsClock = gps.valid ? `GPS W${gps.week} · TOW ${Math.floor(gps.tow)} s` : t('GPS acquiring');
   return html`
     <div class="dashboard-shell">
       <div class="card dashboard-kpis">
         <div class="dashboard-titlebar">
-          <span class="instrument-title">Live GNSS observatory</span>
-          <span class=${'instrument-state '+(live.online?'ok':'bad')}><i></i>${live.online?'Online':'TELEMETRY STALE'}</span>
+          <span class="instrument-title">${t("Live GNSS observatory")}</span>
+          <span class=${'instrument-state '+(live.online?'ok':'bad')}><i></i>${live.online?t('Online'):t('TELEMETRY STALE')}</span>
           <span class="instrument-clock mono"><span>CEST ${fmtCESTTime(live.time)}</span><i></i><span>UTC ${fmtUTCTime(live.time)}</span><i></i><span>${gpsClock}</span></span>
         </div>
         <div class="kpis">
-          ${kpi('Tracked satellites', trackedSats.length, used + ' used by receiver')}
-          ${kpi('Average SNR', avgCNO ? avgCNO + ' dB-Hz' : '—', cn.length + ' tracked signals')}
-          ${kpi('Below 15° mask', masked, 'shown grey')}
+          ${kpi(t('Tracked satellites'), trackedSats.length, t('{n} used by receiver',{n:used}))}
+          ${kpi(t('Average SNR'), avgCNO ? avgCNO + ' dB-Hz' : '—', t('{n} tracked signals',{n:cn.length}))}
+          ${kpi(t('Below 15° mask'), masked, t('shown grey'))}
           ${kpi('CPU', (h.cpu_percent || 0).toFixed(0) + '%', (h.temp_c || 0).toFixed(1) + ' °C')}
-          ${kpi('Disk free', fmtBytes((h.disk_free_mb || 0) * 1048576), 'archive volume')}
-          ${kpi('Memory available', fmtBytes((h.mem_free_mb || 0) * 1048576), 'of ' + fmtBytes((h.mem_total_mb || 0) * 1048576) + ' · load ' + (h.load1 || 0).toFixed(2))}
+          ${kpi(t('Disk free'), fmtBytes((h.disk_free_mb || 0) * 1048576), t('archive volume'))}
+          ${kpi(t('Memory available'), fmtBytes((h.mem_free_mb || 0) * 1048576), t('of {total} · load {load}',{total:fmtBytes((h.mem_total_mb || 0) * 1048576),load:(h.load1 || 0).toFixed(2)}))}
         </div>
       </div>
 
@@ -637,9 +646,9 @@ const expiryDay = value => {
 };
 
 const userState = u => {
-  if (!u.enabled) return ['disabled', 'bad'];
-  if (u.expires_at && new Date(u.expires_at) <= new Date()) return ['expired', 'warn'];
-  return ['enabled', 'ok'];
+  if (!u.enabled) return [t('disabled'), 'bad'];
+  if (u.expires_at && new Date(u.expires_at) <= new Date()) return [t('expired'), 'warn'];
+  return [t('enabled'), 'ok'];
 };
 
 const detailEditor = d => ({
@@ -672,7 +681,7 @@ function Users() {
         api('/api/mountpoints')]);
       setUsers(u); setMounts(m.map(x => x.name)); setErr('');
     }
-    catch (e) { setErr(e.message || 'failed'); }
+    catch (e) { setErr(e.message || t('failed')); }
   }, [show]);
   useEffect(() => { load(); }, [load]);
 
@@ -681,7 +690,7 @@ function Users() {
     try {
       const d = await api(`/api/users/${encodeURIComponent(name)}?limit=${pageSize}&offset=${nextOffset}`);
       setDetail(d); setEdit(detailEditor(d));
-    } catch (e) { setErr(e.message || 'failed'); }
+    } catch (e) { setErr(e.message || t('failed')); }
     finally { setBusy(false); }
   };
 
@@ -693,7 +702,7 @@ function Users() {
       setForm({ username: '', password: '', limit: 5, note: '' });
       setCreateOpen(false);
       await load(); await openUser(made.username, 0);
-    } catch (e) { setErr(e.message || 'failed'); }
+    } catch (e) { setErr(e.message || t('failed')); }
   };
   const toggle = async (u) => {
     try {
@@ -702,15 +711,15 @@ function Users() {
         body: JSON.stringify({ enabled: !u.enabled }) });
       await load();
       if (selected === u.username) await openUser(u.username, offset);
-    } catch (e) { setErr(e.message || 'failed'); }
+    } catch (e) { setErr(e.message || t('failed')); }
   };
   const del = async (u) => {
-    if (!confirm(`Delete NTRIP user "${u.username}"? Past connection records are kept.`)) return;
+    if (!confirm(t('Delete NTRIP user "{name}"? Past connection records are kept.',{name:u.username}))) return;
     try {
       await api(`/api/users/${encodeURIComponent(u.username)}`, { method: 'DELETE' });
       if (selected === u.username) { setSelected(''); setDetail(null); setEdit(null); }
       await load();
-    } catch (e) { setErr(e.message || 'failed'); }
+    } catch (e) { setErr(e.message || t('failed')); }
   };
 
   const save = async e => {
@@ -727,7 +736,7 @@ function Users() {
         method: 'PUT', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body) });
       await load(); await openUser(selected, offset);
-    } catch (e) { setErr(e.message || 'failed'); }
+    } catch (e) { setErr(e.message || t('failed')); }
     finally { setBusy(false); }
   };
 
@@ -738,52 +747,51 @@ function Users() {
 
   return html`<div class="auto-grid">
     <div class="card" style=${{ gridColumn: '1 / -1' }}>
-      <div class="card-title"><h2>NTRIP users</h2>
-        <div><button class="btn act" onClick=${()=>setCreateOpen(true)}>+ Add user</button>${' '}
-          <button class="btn act" onClick=${load}>Refresh</button></div></div>
+      <div class="card-title"><h2>${t("NTRIP users")}</h2>
+        <div><button class="btn act" onClick=${()=>setCreateOpen(true)}>${t("+ Add user")}</button>${' '}
+          <button class="btn act" onClick=${load}>${t("Refresh")}</button></div></div>
       <div class="tbl-scroll"><table>
-        <thead><tr><th>Username</th><th>Status</th><th>Active</th><th>Limit</th>
-          <th>Last connection</th><th>Sent</th><th>Expires</th>
-          ${show ? html`<th>Password</th>` : null}<th></th></tr></thead>
+        <thead><tr><th>${t("Username")}</th><th>${t("Status")}</th><th>${t("Active")}</th><th>${t("Limit")}</th>
+          <th>${t("Last connection")}</th><th>${t("Sent")}</th><th>${t("Expires")}</th>
+          ${show ? html`<th>${t("Password")}</th>` : null}<th></th></tr></thead>
         <tbody>${users.map(u => { const state = userState(u); return html`
         <tr key=${u.username} class=${selected === u.username ? 'selected-row' : ''}>
           <td><button class="user-link mono" onClick=${() => openUser(u.username, 0)}>${u.username}</button></td>
           <td><span class=${'pill ' + state[1]}>${state[0]}</span></td>
           <td>${u.active}</td><td>${u.limit}</td>
-          <td class="mono">${u.last_connection ? fmtDateTime(u.last_connection) : 'Never'}</td>
+          <td class="mono">${u.last_connection ? fmtDateTime(u.last_connection) : t('Never')}</td>
           <td>${fmtBytes(u.total_bytes_sent)}</td>
-          <td>${u.expires_at ? expiryDay(u.expires_at) : 'Never'}</td>
+          <td>${u.expires_at ? expiryDay(u.expires_at) : t('Never')}</td>
           ${show ? html`<td class="mono">${u.password || '—'}</td>` : null}
           <td style=${{ textAlign: 'right', whiteSpace: 'nowrap' }}>
-            <button class="btn act" onClick=${() => toggle(u)}>${u.enabled ? 'Disable' : 'Enable'}</button>
-            ${' '}<button class="btn act danger" onClick=${() => del(u)}>Delete</button></td>
+            <button class="btn act" onClick=${() => toggle(u)}>${u.enabled ? t('Disable') : t('Enable')}</button>
+            ${' '}<button class="btn act danger" onClick=${() => del(u)}>${t("Delete")}</button></td>
         </tr>`; })}</tbody></table></div>
       <p style=${{ marginBottom: 0 }}>
         <button class="btn act" onClick=${() => setShow(!show)}>
-          ${show ? 'Hide passwords' : 'Show passwords'}</button>
+          ${show ? t('Hide passwords') : t('Show passwords')}</button>
         <span class="muted" style=${{ marginLeft: '10px', fontSize: '12px' }}>
-          NTRIP passwords are stored encrypted, not hashed, so they can be read back
-          to configure field equipment.</span></p>
+          ${t("NTRIP passwords are stored encrypted, not hashed, so they can be read back to configure field equipment.")}</span></p>
     </div>
 
     ${createOpen ? html`<div class="modal-backdrop" onMouseDown=${e=>{if(e.target===e.currentTarget)setCreateOpen(false)}}>
       <div class="card modal-card" role="dialog" aria-modal="true" aria-labelledby="add-user-title">
-      <div class="card-title"><h2 id="add-user-title">Add NTRIP user</h2><button class="btn act" type="button" onClick=${()=>setCreateOpen(false)}>Close</button></div>
+      <div class="card-title"><h2 id="add-user-title">${t("Add NTRIP user")}</h2><button class="btn act" type="button" onClick=${()=>setCreateOpen(false)}>${t("Close")}</button></div>
       <form onSubmit=${create}>
         <div class="control-row">
-          <div><label>Username</label><input class="form-control" value=${form.username} required
+          <div><label>${t("Username")}</label><input class="form-control" value=${form.username} required
             onChange=${e => setForm({ ...form, username: e.target.value })}/></div>
-          <div><label>Password</label><input class="form-control" value=${form.password} required
+          <div><label>${t("Password")}</label><input class="form-control" value=${form.password} required
             type="password" autoComplete="new-password"
             onChange=${e => setForm({ ...form, password: e.target.value })}/></div>
-          <div style=${{ maxWidth: '110px' }}><label>Conn. limit</label>
+          <div style=${{ maxWidth: '110px' }}><label>${t("Conn. limit")}</label>
             <input class="form-control" type="number" min="1" value=${form.limit}
             onChange=${e => setForm({ ...form, limit: e.target.value })}/></div>
         </div>
-        <p><label>Notes</label><input class="form-control" value=${form.note}
+        <p><label>${t("Notes")}</label><input class="form-control" value=${form.note}
           onChange=${e => setForm({ ...form, note: e.target.value })}/></p>
-        <div class="form-actions"><button class="btn act" type="submit">Create user</button>
-          <button class="btn act" type="button" onClick=${()=>setCreateOpen(false)}>Cancel</button></div>
+        <div class="form-actions"><button class="btn act" type="submit">${t("Create user")}</button>
+          <button class="btn act" type="button" onClick=${()=>setCreateOpen(false)}>${t("Cancel")}</button></div>
       </form>
     </div></div>` : null}
 
@@ -792,88 +800,88 @@ function Users() {
     ${selected && edit && detail ? html`
     <div class="users-layout">
       <div class="card">
-        <div class="card-title"><h2>Edit ${selected}</h2>
+        <div class="card-title"><h2>${t('Edit {name}',{name:selected})}</h2>
           <span class=${'pill ' + userState(detail.user)[1]}>${userState(detail.user)[0]}</span></div>
         <form class="user-form" onSubmit=${save}>
           <div class="field-row two">
-            <div class="field"><label>Connection limit</label><input class="form-control" type="number" min="1" required
+            <div class="field"><label>${t("Connection limit")}</label><input class="form-control" type="number" min="1" required
               value=${edit.limit} onChange=${e => setEdit({ ...edit, limit: e.target.value })}/></div>
-            <div class="field check-field"><label>Account</label><label class="check">
+            <div class="field check-field"><label>${t("Account")}</label><label class="check">
               <input class="form-check-input" type="checkbox" checked=${edit.enabled}
-                onChange=${e => setEdit({ ...edit, enabled: e.target.checked })}/> Enabled</label></div>
+                onChange=${e => setEdit({ ...edit, enabled: e.target.checked })}/> ${t("Enabled")}</label></div>
           </div>
-          <div class="field"><label>New password</label><input class="form-control" type="password" autoComplete="new-password"
-            placeholder="Leave blank to keep current password" value=${edit.password}
+          <div class="field"><label>${t("New password")}</label><input class="form-control" type="password" autoComplete="new-password"
+            placeholder=${t("Leave blank to keep current password")} value=${edit.password}
             onChange=${e => setEdit({ ...edit, password: e.target.value })}/></div>
-          <div class="field"><label>Email</label><input class="form-control" type="email" value=${edit.email}
+          <div class="field"><label>${t("Email")}</label><input class="form-control" type="email" value=${edit.email}
             onChange=${e => setEdit({ ...edit, email: e.target.value })}/></div>
-          <div class="field"><label>Expiry date (UTC)</label><input class="form-control" type="date" value=${edit.expiry}
+          <div class="field"><label>${t("Expiry date (UTC)")}</label><input class="form-control" type="date" value=${edit.expiry}
             onChange=${e => setEdit({ ...edit, expiry: e.target.value })}/>
-            <div class="field-help">Blank means the account never expires. The selected date remains valid all day.</div></div>
-          <div class="field"><label>Notes</label><textarea rows="3" value=${edit.note}
+            <div class="field-help">${t("Blank means the account never expires. The selected date remains valid all day.")}</div></div>
+          <div class="field"><label>${t("Notes")}</label><textarea rows="3" value=${edit.note}
             onChange=${e => setEdit({ ...edit, note: e.target.value })}></textarea></div>
-          <div class="field"><label>Allowed client IPs / CIDRs</label><textarea rows="4"
-            placeholder="Blank allows every address\n192.0.2.14\n2001:db8::/48" value=${edit.ipRules}
+          <div class="field"><label>${t("Allowed client IPs / CIDRs")}</label><textarea rows="4"
+            placeholder=${t("Blank allows every address\n192.0.2.14\n2001:db8::/48")} value=${edit.ipRules}
             onChange=${e => setEdit({ ...edit, ipRules: e.target.value })}></textarea>
-            <div class="field-help">One address or CIDR per line. Rules use the client address visible to the caster.</div></div>
-          <div class="field"><label>Mountpoint access</label><label class="check">
+            <div class="field-help">${t("One address or CIDR per line. Rules use the client address visible to the caster.")}</div></div>
+          <div class="field"><label>${t("Mountpoint access")}</label><label class="check">
             <input class="form-check-input" type="checkbox" checked=${edit.allMounts}
-              onChange=${e => setEdit({ ...edit, allMounts: e.target.checked })}/> All mountpoints</label>
+              onChange=${e => setEdit({ ...edit, allMounts: e.target.checked })}/> ${t("All mountpoints")}</label>
             <div class="mount-checks">${mounts.map(name => html`<label class="check" key=${name}>
               <input class="form-check-input" type="checkbox" disabled=${edit.allMounts}
                 checked=${edit.allMounts || edit.mountpoints.includes(name)}
                 onChange=${e => chooseMount(name, e.target.checked)}/>${name}</label>`)}</div>
             ${!edit.allMounts && edit.mountpoints.length === 0
-              ? html`<div class="field-help bad-text">Select at least one mountpoint, or choose All mountpoints.</div>` : null}
+              ? html`<div class="field-help bad-text">${t("Select at least one mountpoint, or choose All mountpoints.")}</div>` : null}
           </div>
           <div class="form-actions"><button class="primary go" type="submit"
             disabled=${busy || (!edit.allMounts && edit.mountpoints.length === 0)}>
-            ${busy ? 'Saving…' : 'Save changes'}</button>
-            <button class="btn act" type="button" onClick=${() => openUser(selected, offset)}>Discard</button></div>
+            ${busy ? t('Saving…') : t('Save changes')}</button>
+            <button class="btn act" type="button" onClick=${() => openUser(selected, offset)}>${t("Discard")}</button></div>
         </form>
       </div>
 
       <div class="user-detail">
         <div class="card">
-          <h2>Account summary</h2>
+          <h2>${t("Account summary")}</h2>
           <div class="kpis user-kpis">
-            ${kpi('Connections', detail.stats.connection_count, detail.stats.active + ' active')}
-            ${kpi('Data sent', fmtBytes(detail.stats.total_bytes_sent), fmtBytes(detail.stats.total_bytes_received) + ' received')}
-            ${kpi('Connected time', fmtDur(detail.stats.total_duration_s), 'across all sessions')}
-            ${kpi('Last connection', detail.stats.last_connection ? fmtDateTime(detail.stats.last_connection) : 'Never',
-              detail.stats.first_connection ? 'first ' + fmtDateTime(detail.stats.first_connection) : 'no history')}
+            ${kpi(t('Connections'), detail.stats.connection_count, t('{n} active',{n:detail.stats.active}))}
+            ${kpi(t('Data sent'), fmtBytes(detail.stats.total_bytes_sent), t('{v} received',{v:fmtBytes(detail.stats.total_bytes_received)}))}
+            ${kpi(t('Connected time'), fmtDur(detail.stats.total_duration_s), t('across all sessions'))}
+            ${kpi(t('Last connection'), detail.stats.last_connection ? fmtDateTime(detail.stats.last_connection) : t('Never'),
+              detail.stats.first_connection ? t('first {d}',{d:fmtDateTime(detail.stats.first_connection)}) : t('no history'))}
           </div>
           <dl class="kv user-meta">
-            <dt>Email</dt><dd>${detail.user.email || '—'}</dd>
-            <dt>Notes</dt><dd>${detail.user.note || '—'}</dd>
-            <dt>IPs seen</dt><dd class="mono">${(detail.stats.ips_seen || []).join(', ') || 'None'}</dd>
-            <dt>IP access</dt><dd class="mono">${detail.access.all_ips ? 'All addresses' : detail.access.ip_rules.join(', ')}</dd>
-            <dt>Mountpoints</dt><dd class="mono">${detail.access.all_mountpoints ? 'All mountpoints' : detail.access.mountpoints.join(', ')}</dd>
+            <dt>${t("Email")}</dt><dd>${detail.user.email || '—'}</dd>
+            <dt>${t("Notes")}</dt><dd>${detail.user.note || '—'}</dd>
+            <dt>${t("IPs seen")}</dt><dd class="mono">${(detail.stats.ips_seen || []).join(', ') || t('None')}</dd>
+            <dt>${t("IP access")}</dt><dd class="mono">${detail.access.all_ips ? t('All addresses') : detail.access.ip_rules.join(', ')}</dd>
+            <dt>${t("Mountpoints")}</dt><dd class="mono">${detail.access.all_mountpoints ? t('All mountpoints') : detail.access.mountpoints.join(', ')}</dd>
           </dl>
         </div>
         <div class="card">
-          <div class="card-title"><h2>Connection history</h2>
-            <span class="muted">${detail.page.total} total</span></div>
-          ${detail.history.length === 0 ? html`<p class="muted">No connections recorded for this account.</p>` : html`
+          <div class="card-title"><h2>${t("Connection history")}</h2>
+            <span class="muted">${t('{n} total',{n:detail.page.total})}</span></div>
+          ${detail.history.length === 0 ? html`<p class="muted">${t("No connections recorded for this account.")}</p>` : html`
           <div class="tbl-scroll"><table>
-            <thead><tr><th>Started</th><th>Mountpoint</th><th>Client IP</th>
-              <th>Duration</th><th>Sent</th><th>Agent</th></tr></thead>
+            <thead><tr><th>${t("Started")}</th><th>${t("Mountpoint")}</th><th>${t("Client IP")}</th>
+              <th>${t("Duration")}</th><th>${t("Sent")}</th><th>${t("Agent")}</th></tr></thead>
             <tbody>${detail.history.map(c => html`<tr key=${c.id} class=${c.active ? 'active-row' : ''}>
               <td class="mono">${fmtDateTime(c.started)}</td><td class="mono">${c.mountpoint}</td>
               <td class="mono">${c.client_ip}</td><td>${fmtDur(c.duration_s)}
-                ${c.active ? html` <span class="pill ok">live</span>` : null}</td>
+                ${c.active ? html` <span class="pill ok">${t("live")}</span>` : null}</td>
               <td>${fmtBytes(c.bytes_sent)}</td><td class="muted">${c.agent || '—'}</td>
             </tr>`)}</tbody></table></div>`}
           <div class="history-pager">
             <button class="btn act" disabled=${offset === 0 || busy}
-              onClick=${() => openUser(selected, Math.max(0, offset - pageSize))}>Previous</button>
-            <span class="muted">${detail.page.total ? `${offset + 1}–${Math.min(offset + pageSize, detail.page.total)}` : '0'} of ${detail.page.total}</span>
+              onClick=${() => openUser(selected, Math.max(0, offset - pageSize))}>${t("Previous")}</button>
+            <span class="muted">${detail.page.total ? `${offset + 1}–${Math.min(offset + pageSize, detail.page.total)}` : '0'} ${t('of')} ${detail.page.total}</span>
             <button class="btn act" disabled=${offset + pageSize >= detail.page.total || busy}
-              onClick=${() => openUser(selected, offset + pageSize)}>Next</button>
+              onClick=${() => openUser(selected, offset + pageSize)}>${t("Next")}</button>
           </div>
         </div>
       </div>
-    </div>` : selected && busy ? html`<div class="card"><p class="muted">Loading user…</p></div>` : null}
+    </div>` : selected && busy ? html`<div class="card"><p class="muted">${t("Loading user…")}</p></div>` : null}
   </div>`;
 }
 
@@ -886,17 +894,17 @@ function Connections() {
     go(); const t = setInterval(go, 10000); return () => clearInterval(t);
   }, []);
   return html`<div class="card">
-    <h2>Connection history</h2>
-    ${rows.length === 0 ? html`<p class="muted">No connections recorded yet.</p>` : html`
+    <h2>${t("Connection history")}</h2>
+    ${rows.length === 0 ? html`<p class="muted">${t("No connections recorded yet.")}</p>` : html`
     <div class="tbl-scroll"><table>
-      <thead><tr><th>User</th><th>Mountpoint</th><th>Client IP</th><th>Via proxy</th>
-        <th>Started</th><th>Duration</th><th>Sent</th><th>Agent</th></tr></thead>
+      <thead><tr><th>${t("User")}</th><th>${t("Mountpoint")}</th><th>${t("Client IP")}</th><th>${t("Via proxy")}</th>
+        <th>${t("Started")}</th><th>${t("Duration")}</th><th>${t("Sent")}</th><th>${t("Agent")}</th></tr></thead>
       <tbody>${rows.map((c, i) => html`<tr key=${i}>
         <td class="mono">${c.username}</td><td class="mono">${c.mountpoint}</td>
         <td class="mono">${c.client_ip}</td>
-        <td>${c.via_proxy ? html`<span class="pill ok">yes</span>` : html`<span class="muted">—</span>`}</td>
+        <td>${c.via_proxy ? html`<span class="pill ok">${t("yes")}</span>` : html`<span class="muted">—</span>`}</td>
         <td class="mono">${fmtDateTime(c.started)}</td>
-        <td>${fmtDur(c.duration_s)}${c.active ? html` <span class="pill ok">live</span>` : null}</td>
+        <td>${fmtDur(c.duration_s)}${c.active ? html` <span class="pill ok">${t("live")}</span>` : null}</td>
         <td>${fmtBytes(c.bytes)}</td><td class="muted">${c.agent || '—'}</td></tr>`)}
       </tbody></table></div>`}
   </div>`;
@@ -909,8 +917,8 @@ function UsersPage() {
   const [view, setView] = useState('accounts');
   return html`<div class="users-page">
     <div class="subnav">
-      <button class=${view === 'accounts' ? 'on' : ''} onClick=${() => setView('accounts')}>Accounts</button>
-      <button class=${view === 'connections' ? 'on' : ''} onClick=${() => setView('connections')}>Connection history</button>
+      <button class=${view === 'accounts' ? 'on' : ''} onClick=${() => setView('accounts')}>${t("Accounts")}</button>
+      <button class=${view === 'connections' ? 'on' : ''} onClick=${() => setView('connections')}>${t("Connection history")}</button>
     </div>
     ${view === 'accounts' ? html`<${Users}/>` : html`<${Connections}/>`}
   </div>`;
@@ -994,7 +1002,7 @@ function LiveCapture({ live }) {
   if (!arcs.length) return null;
   const now = Date.now() / 1000;
   return html`<section class="panel">
-    <header class="panel-h"><h2>Capture in progress</h2></header>
+    <header class="panel-h"><h2>${t("Capture in progress")}</h2></header>
     <div class="panel-b">
       <table class="table table-vcenter grid-t"><tbody>
         ${arcs.map(a => {
@@ -1037,7 +1045,7 @@ function FileDownload({ live }) {
       const base = last ? new Date(last + 'T00:00:00') : new Date();
       setMonth(new Date(base.getFullYear(), base.getMonth(), 1));
       if (last) { setSel(last); setEndSel(last); }
-    }).catch(e => setErr(e.message || 'Could not load available data'));
+    }).catch(e => setErr(e.message || t('Could not load available data')));
   }, []);
 
   useEffect(() => {
@@ -1082,16 +1090,16 @@ function FileDownload({ live }) {
       setJob(await api('/api/downloader/process', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ outputs, preset, start: startAt.toISOString(), end: endAt.toISOString() }) }));
-    } catch (e) { setErr(e.message || 'Conversion failed'); }
+    } catch (e) { setErr(e.message || t('Conversion failed')); }
   };
   const cancel = async () => {
     if (!job) return;
     try { await api('/api/downloader/job/' + job.id + '/cancel', { method: 'POST' }); }
-    catch (e) { setErr(e.message || 'Could not cancel'); }
+    catch (e) { setErr(e.message || t('Could not cancel')); }
   };
 
-  if (!month) return html`<section class="panel"><header class="panel-h"><h2>File download</h2></header>
-    <div class="panel-b"><p class="note">Loading…</p></div></section>`;
+  if (!month) return html`<section class="panel"><header class="panel-h"><h2>${t("File download")}</h2></header>
+    <div class="panel-b"><p class="note">${t("Loading…")}</p></div></section>`;
 
   const y = month.getFullYear(), m = month.getMonth();
   const lead = (new Date(y, m, 1).getDay() + 6) % 7;
@@ -1118,16 +1126,16 @@ function FileDownload({ live }) {
     <div class="fd-cols">
       <section class="panel">
         <header class="panel-h">
-          <h2>Date</h2>
+          <h2>${t("Date")}</h2>
           <div class="pager">
             <button disabled=${!!prevOff} onClick=${() => setMonth(new Date(y, m - 1, 1))}>‹</button>
-            <span>${MONTHS[m]} ${y}</span>
+            <span>${t(MONTHS[m])} ${y}</span>
             <button disabled=${!!nextOff} onClick=${() => setMonth(new Date(y, m + 1, 1))}>›</button>
           </div>
         </header>
         <div class="panel-b">
           <div class="cal">
-            ${DOW.map(d => html`<div class="cal-h" key=${d}>${d.slice(0, 2)}</div>`)}
+            ${DOW.map(d => html`<div class="cal-h" key=${d}>${t(d).slice(0, 2)}</div>`)}
             ${cells.map((d, i) => {
               if (d === null) return html`<div class="cal-d empty-state" key=${'e' + i}></div>`;
               const k = key(d), info = byDate[k];
@@ -1143,51 +1151,51 @@ function FileDownload({ live }) {
             })}
           </div>
           <dl class="legend-swatch">
-            <dt class="k-av"></dt><dd>Available</dd>
-            <dt class="k-obs"></dt><dd>No ephemeris</dd>
-            <dt class="k-cap"></dt><dd>Recording now</dd>
-            <dt class="k-no"></dt><dd>No data</dd>
+            <dt class="k-av"></dt><dd>${t("Available")}</dd>
+            <dt class="k-obs"></dt><dd>${t("No ephemeris")}</dd>
+            <dt class="k-cap"></dt><dd>${t("Recording now")}</dd>
+            <dt class="k-no"></dt><dd>${t("No data")}</dd>
           </dl>
-          <p class="note">Select a start day, then an end day. A range may span up to 31 days.</p>
+          <p class="note">${t("Select a start day, then an end day. A range may span up to 31 days.")}</p>
         </div>
       </section>
 
       <section class="panel">
-        <header class="panel-h"><h2>Extract</h2></header>
+        <header class="panel-h"><h2>${t("Extract")}</h2></header>
         <div class="panel-b">
           <dl class="kv">
-            <dt>Range</dt><dd class="mono">${sel || '—'} → ${endSel || '—'}</dd>
-            <dt>Duration</dt><dd class="mono">${durMin > 0 ? Math.floor(durMin/1440)+'d '+hhmm(durMin) : '—'}</dd>
+            <dt>${t("Range")}</dt><dd class="mono">${sel || '—'} → ${endSel || '—'}</dd>
+            <dt>${t("Duration")}</dt><dd class="mono">${durMin > 0 ? Math.floor(durMin/1440)+'d '+hhmm(durMin) : '—'}</dd>
           </dl>
 
             <div class="field-row two">
-              <div class="field"><label>Start date</label><input class="form-control" type="date" value=${sel||''}
+              <div class="field"><label>${t("Start date")}</label><input class="form-control" type="date" value=${sel||''}
                 min=${days.length?days[0].date:''} max=${endSel||''} onChange=${e=>setSel(e.target.value)}/></div>
-              <div class="field"><label>End date</label><input class="form-control" type="date" value=${endSel||''}
+              <div class="field"><label>${t("End date")}</label><input class="form-control" type="date" value=${endSel||''}
                 min=${sel||''} max=${days.length?days[days.length-1].date:''} onChange=${e=>setEndSel(e.target.value)}/></div>
             </div>
 
             <div class="field-row">
-              <div class="field"><label>Time base</label>
+              <div class="field"><label>${t("Time base")}</label>
                 <select class="form-select" value=${zone} onChange=${e => setZone(e.target.value)}>
                   <option value="local">${tzAbbr(today)}</option>
                   <option value="utc">UTC</option>
                   <option value="gps">GPS</option>
                 </select></div>
-              <div class="field"><label>From</label>
+              <div class="field"><label>${t("From")}</label>
                 <${TimeField} value=${from} onChange=${setFrom}/></div>
-              <div class="field"><label>To</label>
+              <div class="field"><label>${t("To")}</label>
                 <${TimeField} value=${to} onChange=${setTo}/></div>
             </div>
             <div class="quick">
-              <span>Set duration</span>
+              <span>${t("Set duration")}</span>
               ${[['30 min', 30], ['1 h', 60], ['2 h', 120], ['4 h', 240], ['6 h', 360], ['12 h', 720]]
                 .map(([lab, mins]) => html`<button key=${lab}
                   onClick=${() => { const e = toMin(from) + mins;
                     setTo(hhmm(e)); if(sel) setEndSel(e>=1440?new Date(Date.parse(sel+'T00:00:00Z')+86400000).toISOString().slice(0,10):sel); }}>${lab}</button>`)}
             </div>
             ${rangeBad ? html`<p class="alert-text">
-                End must be after start and the range may not exceed 31 days.</p>` : html`
+                ${t("End must be after start and the range may not exceed 31 days.")}</p>` : html`
               <div class="tz-row">
                 ${[[tzAbbr(today), zoneTime(startAt,LOCAL_TZ).slice(0,5), zoneTime(endAt,LOCAL_TZ).slice(0,5)], ['UTC', zoneTime(startAt,'UTC').slice(0,5), zoneTime(endAt,'UTC').slice(0,5)],
                    ['GPS', hhmm(startAt.getUTCHours()*60+startAt.getUTCMinutes()+gpsOffMin),hhmm(endAt.getUTCHours()*60+endAt.getUTCMinutes()+gpsOffMin)]]
@@ -1196,62 +1204,61 @@ function FileDownload({ live }) {
                     <span class="tz-v mono">${a}–${b}</span></div>`)}
               </div>`}
 
-          ${missingDays ? html`<p class="alert-text">${missingDays} day(s) in this range have no archive data.</p>` : null}
+          ${missingDays ? html`<p class="alert-text">${t('{n} day(s) in this range have no archive data.',{n:missingDays})}</p>` : null}
 
           <div class="field">
-            <label>Output</label>
+            <label>${t("Output")}</label>
             <div class="seg">
               ${outOpts.map(([k, lab]) => html`<button key=${k}
                 class=${outputs === k ? 'on' : ''}
                 disabled=${k === 'nav' && noNav}
-                title=${k === 'nav' && noNav ? 'No ephemeris recorded for this day' : ''}
-                onClick=${() => setOutputs(k)}>${lab}</button>`)}
+                title=${k === 'nav' && noNav ? t('No ephemeris recorded for this day') : ''}
+                onClick=${() => setOutputs(k)}>${t(lab)}</button>`)}
             </div>
           </div>
           <div class="field">
-            <label>RINEX preset</label>
+            <label>${t("RINEX preset")}</label>
             <select class="form-select" value=${preset} onChange=${e=>setPreset(e.target.value)}>
-              ${presets.map(p=>html`<option key=${p.id} value=${p.id}>${p.name}</option>`)}
+              ${presets.map(p=>html`<option key=${p.id} value=${p.id}>${t(p.name)}</option>`)}
             </select>
-            ${presets.filter(p=>p.id===preset).map(p=>html`<p class="note" key=${p.id}>${p.note}</p>`)}
+            ${presets.filter(p=>p.id===preset).map(p=>html`<p class="note" key=${p.id}>${t(p.note)}</p>`)}
           </div>
-          ${noNav ? html`<p class="note">At least one selected day holds RTCM only; navigation data is unavailable for the complete range.</p>` : null}
+          ${noNav ? html`<p class="note">${t("At least one selected day holds RTCM only; navigation data is unavailable for the complete range.")}</p>` : null}
           ${endSel && byDate[endSel] && byDate[endSel].capturing ? html`<p class="note">
-            The final day is still recording. Anything after the current time is not
-            available yet and the range is trimmed to now.</p>` : null}
+            ${t("The final day is still recording. Anything after the current time is not available yet and the range is trimmed to now.")}</p>` : null}
 
           <div class="submit">
             ${job && job.state === 'done' ? html`
               <a class="primary go" href=${'/api/downloader/download/' + job.token}>
-                ↓ Download</a>
+                ${t("↓ Download")}</a>
               <div class="submit-info">
                 <div class="submit-line"><span class="mono">${job.zip_name}</span>
                   <span class="dim mono">${fmtMB(job.size_mb)}</span></div>
                 <div class="bar done"><i style=${{ width: '100%' }}></i></div>
                 <div class="submit-foot"><span>${job.date} · ${job.window}</span>
                   <span class="mono">${job.elapsed}</span>
-                  <button class="link-btn" onClick=${() => setJob(null)}>Clear</button></div>
+                  <button class="link-btn" onClick=${() => setJob(null)}>${t("Clear")}</button></div>
               </div>`
             : html`
               <button class="primary go" disabled=${!sel || running || rangeBad || !!missingDays} onClick=${run}>
-                ${running ? 'Converting' : 'Convert'}</button>
+                ${running ? t('Converting') : t('Convert')}</button>
               ${running ? html`<div class="submit-info">
                   <div class="bar lg"><i style=${{ width: pct + '%' }}></i></div>
                   <div class="submit-foot"><span class="mono">${pct}%</span>
                     <span>${job.stage}</span>
                     <span class="mono">${job.elapsed}</span>
-                    <button class="link-btn" onClick=${cancel}>Cancel</button></div>
+                    <button class="link-btn" onClick=${cancel}>${t("Cancel")}</button></div>
                 </div>`
-                : html`<span class="est">${sel && !rangeBad ? 'Final ZIP size is shown after conversion' : ''}</span>`}`}
+                : html`<span class="est">${sel && !rangeBad ? t('Final ZIP size is shown after conversion') : ''}</span>`}`}
           </div>
 
           ${job && job.state === 'cancelled' ? html`<div class="result cancelled">
-            <div class="result-h"><span>Cancelled</span>
-              <button class="link-btn" onClick=${() => setJob(null)}>Clear</button></div>
+            <div class="result-h"><span>${t("Cancelled")}</span>
+              <button class="link-btn" onClick=${() => setJob(null)}>${t("Clear")}</button></div>
           </div>` : null}
           ${job && job.state === 'error' ? html`<div class="result error">
-            <div class="result-h"><span>Conversion failed</span>
-              <button class="link-btn" onClick=${() => setJob(null)}>Clear</button></div>
+            <div class="result-h"><span>${t("Conversion failed")}</span>
+              <button class="link-btn" onClick=${() => setJob(null)}>${t("Clear")}</button></div>
             <p class="alert-text" style=${{ margin: 0 }}>${job.error}</p>
           </div>` : null}
           ${err ? html`<p class="alert-text">${err}</p>` : null}
@@ -1339,7 +1346,7 @@ function VisibilityHeatmap({ epochs, keys }) {
     setTip({x:e.clientX-box.left,y:e.clientY-box.top,
       label:systemStyle(sys).short+sv+' · '+sys,
       when:fmtDateTime(epoch.t*1000),
-      value:sat&&sat.cno>0?Math.round(sat.cno)+' dB-Hz':'not observed'});
+      value:sat&&sat.cno>0?Math.round(sat.cno)+' dB-Hz':t('not observed')});
   };
   return html`<div class="heatmap-host" ref=${host}>
     <canvas ref=${canvas} style=${{width:'100%',height:'100%'}}
@@ -1371,38 +1378,38 @@ function HistoryCharts({ epochs, health }) {
   const streamData=[ht,health.map(h=>(h.rtcm_bps||0)/1000),health.map(h=>(h.ubx_bps||0)/1000),health.map(h=>h.clients||0)];
   const countOpts={shape:'count',build:()=>({
     ...chartBase(),
-    series:[{},
-      {label:'Tracked',stroke:token('--accent'),width:2,fill:rgba(token('--accent'),.12),points:{show:false}},
-      {label:'Used in navigation',stroke:token('--ok'),width:1.5,dash:[5,4],points:{show:false}}],
+    series:[{label:t('Time')},
+      {label:t('Tracked'),stroke:token('--accent'),width:2,fill:rgba(token('--accent'),.12),points:{show:false}},
+      {label:t('Used in navigation'),stroke:token('--ok'),width:1.5,dash:[5,4],points:{show:false}}],
     axes:[chartAxis({}),chartAxis({size:44})],
     scales:{y:{range:(u,min,max)=>[0,Math.max(5,Math.ceil((max||0)+2))]}},
   })};
   const streamOpts={shape:'stream',build:()=>({
     ...chartBase(),
-    series:[{},
-      {label:'RTCM kb/s',stroke:token('--ok'),width:1.5,points:{show:false}},
-      {label:'UBX kb/s',stroke:token('--accent'),width:1.5,points:{show:false}},
-      {label:'Clients',stroke:token('--sbas'),width:1.5,scale:'c',points:{show:false}}],
+    series:[{label:t('Time')},
+      {label:t('RTCM kb/s'),stroke:token('--ok'),width:1.5,points:{show:false}},
+      {label:t('UBX kb/s'),stroke:token('--accent'),width:1.5,points:{show:false}},
+      {label:t('Clients'),stroke:token('--sbas'),width:1.5,scale:'c',points:{show:false}}],
     axes:[chartAxis({}),chartAxis({size:44}),chartAxis({scale:'c',side:1,size:38,grid:{show:false}})],
     scales:{y:{range:(u,min,max)=>[0,Math.max(1,(max||0)*1.15)]},c:{range:(u,min,max)=>[0,Math.max(2,(max||0)+1)]}},
   })};
   const hostSeries=[
-    {label:'CPU %',key:'cpu',colour:'--accent',values:health.map(h=>h.cpu_pct||0)},
-    {label:'Temperature °C',key:'temp',colour:'--bad',values:health.map(h=>h.temp_c||0)},
-    {label:'Memory available GB',key:'mem',colour:'--ok',values:health.map(h=>(h.mem_free_mb||0)/1024)},
-    {label:'Disk free TB',key:'disk',colour:'--sbas',values:health.map(h=>(h.disk_free_mb||0)/1048576)},
+    {label:t('CPU %'),key:'cpu',colour:'--accent',values:health.map(h=>h.cpu_pct||0)},
+    {label:t('Temperature °C'),key:'temp',colour:'--bad',values:health.map(h=>h.temp_c||0)},
+    {label:t('Memory available GB'),key:'mem',colour:'--ok',values:health.map(h=>(h.mem_free_mb||0)/1024)},
+    {label:t('Disk free TB'),key:'disk',colour:'--sbas',values:health.map(h=>(h.disk_free_mb||0)/1048576)},
   ];
   return html`<div class="history-chart-grid">
-    <div class="card history-chart wide history-count"><h2>Tracked satellites over time</h2>
+    <div class="card history-chart wide history-count"><h2>${t("Tracked satellites over time")}</h2>
       <${UPlotChart} data=${countData} opts=${countOpts} height=${230}/></div>
-    <div class="card history-chart wide"><h2>Visibility and aggregate SNR · ${visibilityKeys.length} satellites observed in window</h2>
+    <div class="card history-chart wide"><h2>${t('Visibility and aggregate SNR · {n} satellites observed in window',{n:visibilityKeys.length})}</h2>
       <div class="visibility-history" style=${{height:Math.max(320,Math.min(760,visibilityKeys.length*17+105))+'px'}}>
         <${VisibilityHeatmap} epochs=${epochs} keys=${visibilityKeys}/>
       </div>
       <${SNRLegend}/></div>
-    <div class="card history-chart"><h2>Input throughput and clients</h2>
+    <div class="card history-chart"><h2>${t("Input throughput and clients")}</h2>
       <${UPlotChart} data=${streamData} opts=${streamOpts} height=${280}/></div>
-    <div class="card history-chart host-history"><h2>Host resources</h2>
+    <div class="card history-chart host-history"><h2>${t("Host resources")}</h2>
       <div class="host-stack">
         ${hostSeries.map(s => html`<div class="host-track" key=${s.key}>
           <span class="host-track-label mono">${s.label}</span>
@@ -1447,20 +1454,20 @@ function EpochSummary({ epoch }) {
       avg:sig.length?Math.round(sig.reduce((a,b)=>a+b,0)/sig.length):0};
   });
   const cell=(label,value)=>html`<div class="rd" key=${label}><div class="rd-l">${label}</div><div class="rd-v mono">${value}</div></div>`;
-  return html`<div class="card plot-card epoch-summary-card"><h2>Epoch detail</h2>
+  return html`<div class="card plot-card epoch-summary-card"><h2>${t("Epoch detail")}</h2>
     <div class="epoch-summary">
       <div class="epoch-readouts">
-        ${cell('Tracked',sats.length)}
-        ${cell('Used in solution',used)}
-        ${cell('Average SNR',avg?avg+' dB-Hz':'—')}
-        ${cell('Below 15° mask',masked)}
-        ${cell('Signals',signals.length)}
-        ${cell('Strongest',best?best.system+' '+systemStyle(best.system).short+best.sv+' · '+satBest(best)+' dB-Hz':'—')}
+        ${cell(t('Tracked'),sats.length)}
+        ${cell(t('Used in solution'),used)}
+        ${cell(t('Average SNR'),avg?avg+' dB-Hz':'—')}
+        ${cell(t('Below 15° mask'),masked)}
+        ${cell(t('Signals'),signals.length)}
+        ${cell(t('Strongest'),best?best.system+' '+systemStyle(best.system).short+best.sv+' · '+satBest(best)+' dB-Hz':'—')}
       </div>
-      <table class="table table-vcenter epoch-table"><thead><tr><th>Constellation</th><th>Satellites</th><th>Mean SNR</th></tr></thead>
+      <table class="table table-vcenter epoch-table"><thead><tr><th>${t("Constellation")}</th><th>${t("Satellites")}</th><th>${t("Mean SNR")}</th></tr></thead>
         <tbody>${rows.map(r=>html`<tr key=${r.system} class=${r.n?'':'absent'}><td><i class="dot" style=${{background:r.cfg.color}}></i>${r.system}</td>
           <td class="mono">${r.n}</td><td class="mono">${r.avg?r.avg+' dB-Hz':'—'}</td></tr>`)}</tbody></table>
-      <table class="table table-vcenter epoch-table"><thead><tr><th>Band</th><th>Signals</th><th>Mean SNR</th></tr></thead>
+      <table class="table table-vcenter epoch-table"><thead><tr><th>${t("Band")}</th><th>${t("Signals")}</th><th>${t("Mean SNR")}</th></tr></thead>
         <tbody>${Object.keys(bands).sort().map(b=>html`<tr key=${b}><td class="mono">${b}</td><td class="mono">${bands[b].n}</td>
           <td class="mono">${Math.round(bands[b].sum/bands[b].n)} dB-Hz</td></tr>`)}</tbody></table>
     </div></div>`;
@@ -1471,7 +1478,7 @@ function History() {
   const liveEdge=useRef(true);
   useEffect(()=>{
     let active=true,controller=null;
-    const load=initial=>{if(document.hidden&&!initial)return;if(controller)controller.abort();controller=new AbortController();if(initial)setLoading(true);setErr('');api(`/api/history?hours=${hours}`,{signal:controller.signal}).then(d=>{if(!active)return;setData(d);setLoading(false);setIndex(i=>liveEdge.current?Math.max(0,(d.epochs||[]).length-1):Math.min(i,Math.max(0,(d.epochs||[]).length-1)))}).catch(e=>{if(active&&e.name!=='AbortError'){setLoading(false);setErr(e.message||'Could not load history')}})};
+    const load=initial=>{if(document.hidden&&!initial)return;if(controller)controller.abort();controller=new AbortController();if(initial)setLoading(true);setErr('');api(`/api/history?hours=${hours}`,{signal:controller.signal}).then(d=>{if(!active)return;setData(d);setLoading(false);setIndex(i=>liveEdge.current?Math.max(0,(d.epochs||[]).length-1):Math.min(i,Math.max(0,(d.epochs||[]).length-1)))}).catch(e=>{if(active&&e.name!=='AbortError'){setLoading(false);setErr(e.message||t('Could not load history'))}})};
     liveEdge.current=true;load(true);const refresh=setInterval(()=>load(false),60000);return()=>{active=false;if(controller)controller.abort();clearInterval(refresh)};
   },[hours]);
   const pts=(data&&data.epochs)||[],health=(data&&data.health)||[];
@@ -1480,13 +1487,13 @@ function History() {
   const fullHours=(data&&data.retention_days?data.retention_days:7)*24;
   const windows=[...new Set([1,6,24,72,168,fullHours].filter(h=>h<=fullHours))].sort((a,b)=>a-b);
   return html`<div class="history-page">
-    <div class="card history-controls"><div class="card-title"><div><h2>GNSS data history</h2></div>${epoch?html`<span class="pill ok">${fmtDateTime(epoch.t*1000)}</span>`:null}</div>
-      <div class="history-control-grid"><div><label>Retained window</label><select class="form-select" value=${hours} onChange=${e=>{setPlaying(false);setHours(Number(e.target.value))}}>${windows.map(h=>html`<option value=${h}>${h<24?h+' hours':h/24+' days'}</option>`)}</select></div>
-        <div class="history-play"><label>Playback</label><button class="btn act" onClick=${()=>{if(!playing)liveEdge.current=false;setPlaying(!playing)}} disabled=${pts.length<2}>${playing?'Pause':'Play'}</button></div></div>
-      ${pts.length?html`<div class="scrubber"><input class="form-range" type="range" min="0" max=${Math.max(0,pts.length-1)} value=${Math.min(index,pts.length-1)} onInput=${e=>{liveEdge.current=false;setPlaying(false);setIndex(Number(e.target.value))}}/><div><span>${fmtDateTime(pts[0].t*1000)}</span><b>${index+1} / ${pts.length} sampled · ${fmtNum((data&&data.epoch_count)||pts.length)} stored epochs · auto-refresh 60 s${loading?' · refreshing':''}</b><span>${fmtDateTime(pts[pts.length-1].t*1000)}</span></div></div>`:null}
+    <div class="card history-controls"><div class="card-title"><div><h2>${t("GNSS data history")}</h2></div>${epoch?html`<span class="pill ok">${fmtDateTime(epoch.t*1000)}</span>`:null}</div>
+      <div class="history-control-grid"><div><label>${t("Retained window")}</label><select class="form-select" value=${hours} onChange=${e=>{setPlaying(false);setHours(Number(e.target.value))}}>${windows.map(h=>html`<option value=${h}>${h<24?t('{n} hours',{n:h}):t('{n} days',{n:h/24})}</option>`)}</select></div>
+        <div class="history-play"><label>${t("Playback")}</label><button class="btn act" onClick=${()=>{if(!playing)liveEdge.current=false;setPlaying(!playing)}} disabled=${pts.length<2}>${playing?t('Pause'):t('Play')}</button></div></div>
+      ${pts.length?html`<div class="scrubber"><input class="form-range" type="range" min="0" max=${Math.max(0,pts.length-1)} value=${Math.min(index,pts.length-1)} onInput=${e=>{liveEdge.current=false;setPlaying(false);setIndex(Number(e.target.value))}}/><div><span>${fmtDateTime(pts[0].t*1000)}</span><b>${t('{i} / {n} sampled · {e} stored epochs · auto-refresh 60 s',{i:index+1,n:pts.length,e:fmtNum((data&&data.epoch_count)||pts.length)})}${loading?' · '+t('refreshing'):''}</b><span>${fmtDateTime(pts[pts.length-1].t*1000)}</span></div></div>`:null}
       ${err?html`<p class="err">${err}</p>`:null}
     </div>
-    ${!data?html`<div class="card"><p class="muted">Loading telemetry history…</p></div>`:pts.length<2?html`<div class="card"><p class="muted">Not enough telemetry in this window.</p></div>`:html`
+    ${!data?html`<div class="card"><p class="muted">${t("Loading telemetry history…")}</p></div>`:pts.length<2?html`<div class="card"><p class="muted">${t("Not enough telemetry in this window.")}</p></div>`:html`
       <div class="history-playback"><${GNSSPlots} scope="history" sats=${epoch.satellites||[]} signals=${epoch.signals||[]} hiddenSystems=${data.display_hidden_constellations||[]}
         side=${html`<${EpochSummary} epoch=${epoch}/>`}/></div>
       <${HistoryCharts} epochs=${pts} health=${health}/>`}
@@ -1507,21 +1514,21 @@ function Login({ onDone, onClose }) {
       await api('/api/login', { method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username: u, password: p }) });
       onDone();
-    } catch (e) { setErr(e.unauth ? 'Invalid credentials' : (e.message || 'Sign-in failed')); }
+    } catch (e) { setErr(e.unauth ? t('Invalid credentials') : (e.message || t('Sign-in failed'))); }
     finally { setBusy(false); }
   };
   return html`<div class="modal-backdrop" onMouseDown=${e=>{if(e.target===e.currentTarget&&onClose)onClose()}}>
     <div class="card modal-card login-card">
-      <div class="card-title"><div><h2>PSGNSSB sign in</h2>
-        <p class="muted">Administrator access. The public pages need no account.</p></div></div>
+      <div class="card-title"><div><h2>${t("PSGNSSB sign in")}</h2>
+        <p class="muted">${t("Administrator access. The public pages need no account.")}</p></div></div>
       <form onSubmit=${submit}>
-        <p><label>Username</label><input class="form-control" value=${u} autoFocus autoComplete="username"
+        <p><label>${t("Username")}</label><input class="form-control" value=${u} autoFocus autoComplete="username"
           onChange=${e => setU(e.target.value)}/></p>
-        <p><label>Password</label><input class="form-control" type="password" value=${p} autoComplete="current-password"
+        <p><label>${t("Password")}</label><input class="form-control" type="password" value=${p} autoComplete="current-password"
           onChange=${e => setP(e.target.value)}/></p>
         <div class="submit">
-          <button class="btn act" type="submit" disabled=${busy}>${busy?'Signing in…':'Sign in'}</button>
-          ${onClose?html`<button class="btn act" type="button" onClick=${onClose}>Cancel</button>`:null}
+          <button class="btn act" type="submit" disabled=${busy}>${busy?t('Signing in…'):t('Sign in')}</button>
+          ${onClose?html`<button class="btn act" type="button" onClick=${onClose}>${t("Cancel")}</button>`:null}
         </div>
         ${err ? html`<div class="err">${err}</div>` : null}
       </form>
@@ -1542,53 +1549,53 @@ function MountpointSettings({ settings }) {
     format:'RTCM 3.2',carrier:3,nav_system:'GPS+GAL+BDS',network:'',country:'',
     nmea:0,solution:0,generator:'PSGNSS',compress:'none',auth:'B',fee:'N',bitrate:0,msm_detail:'',
     messages_text:'1006:10\n1008:10\n1033:10\n1077:1\n1097:1\n1127:1'}]);
-  const remove = i => { if (confirm('Delete mountpoint ' + rows[i].name + '? Connected rovers using it will be disconnected.')) setRows(rs => rs.filter((_,n)=>n!==i)); };
+  const remove = i => { if (confirm(t('Delete mountpoint {name}? Connected rovers using it will be disconnected.',{name:rows[i].name}))) setRows(rs => rs.filter((_,n)=>n!==i)); };
   const parseMessages = text => text.split(/[\n,]+/).map(x=>x.trim()).filter(Boolean).map(x => {
     const m=x.match(/^(\d{1,4})(?:\s*[:(\/]\s*(\d{1,4})\)?)?$/);
-    if(!m) throw new Error('Message entries must be TYPE:INTERVAL, for example 1077:1');
+    if(!m) throw new Error(t('Message entries must be TYPE:INTERVAL, for example 1077:1'));
     return {type:Number(m[1]),interval:Number(m[2]||1)};
   });
   const save = async () => {
     setErr(''); let mountpoints;
     try { mountpoints=rows.map(({messages_text,...m})=>({...m,messages:parseMessages(messages_text)})); }
     catch(e){setErr(e.message);return;}
-    if(!confirm('Apply mountpoint configuration?\n\nPSGNSSB will restart briefly. Connected rovers will reconnect through the caster.')) return;
+    if(!confirm(t('Apply mountpoint configuration?\n\nPSGNSSB will restart briefly. Connected rovers will reconnect through the caster.'))) return;
     setBusy(true);
     try {
       await api('/api/settings/mountpoints',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({mountpoints})});
       setTimeout(()=>window.location.reload(),3000);
-    } catch(e){setErr(e.message||'Could not save mountpoints');setBusy(false);}
+    } catch(e){setErr(e.message||t('Could not save mountpoints'));setBusy(false);}
   };
   return html`<div class="card settings-section">
-    <div class="card-title"><div><h2>Mountpoint management</h2><p class="muted">Each mountpoint is a lossless RTCM message filter over the receiver stream.</p></div>
-      <button class="btn act" onClick=${add} disabled=${busy}>Add mountpoint</button></div>
+    <div class="card-title"><div><h2>${t("Mountpoint management")}</h2><p class="muted">${t("Each mountpoint is a lossless RTCM message filter over the receiver stream.")}</p></div>
+      <button class="btn act" onClick=${add} disabled=${busy}>${t("Add mountpoint")}</button></div>
     ${err?html`<p class="err">${err}</p>`:null}
     <div class="mountpoint-editor">${rows.map((m,i)=>html`<div class=${'mount-editor '+(m.enabled?'':'disabled')} key=${i}>
-      <div class="mount-editor-head"><label class="check"><input class="form-check-input" type="checkbox" checked=${m.enabled} onChange=${e=>patch(i,{enabled:e.target.checked})}/><strong>${m.name||'Unnamed mountpoint'}</strong></label>
-        ${runtime[m.name]?html`<span class="mount-live mono">${runtime[m.name].clients} client${runtime[m.name].clients===1?'':'s'} · ${runtime[m.name].rate==null?'measuring':fmtBytes(runtime[m.name].rate)+'/s'} · ${runtime[m.name].last_data?'last '+fmtDateTime(runtime[m.name].last_data):'no data'}</span>`:null}
-        <span class=${'pill '+(m.enabled?'ok':'warn')}>${m.enabled?'served':'disabled'}</span><button class="btn act danger" onClick=${()=>remove(i)}>Delete</button></div>
+      <div class="mount-editor-head"><label class="check"><input class="form-check-input" type="checkbox" checked=${m.enabled} onChange=${e=>patch(i,{enabled:e.target.checked})}/><strong>${m.name||t('Unnamed mountpoint')}</strong></label>
+        ${runtime[m.name]?html`<span class="mount-live mono">${t(runtime[m.name].clients===1?'{n} client':'{n} clients',{n:runtime[m.name].clients})} · ${runtime[m.name].rate==null?t('measuring'):fmtBytes(runtime[m.name].rate)+'/s'} · ${runtime[m.name].last_data?t('last {d}',{d:fmtDateTime(runtime[m.name].last_data)}):t('no data')}</span>`:null}
+        <span class=${'pill '+(m.enabled?'ok':'warn')}>${m.enabled?t('served'):t('disabled')}</span><button class="btn act danger" onClick=${()=>remove(i)}>${t("Delete")}</button></div>
       <div class="settings-fields">
-        <div><label>Name</label><input class="form-control mono" value=${m.name} onChange=${e=>patch(i,{name:e.target.value})}/></div>
-        <div><label>Source ID</label><input class="form-control" type="number" min="1" value=${m.source_id} onChange=${e=>patch(i,{source_id:Number(e.target.value)})}/></div>
-        <div><label>Format</label><input class="form-control" value=${m.format} onChange=${e=>patch(i,{format:e.target.value})}/></div>
-        <div><label>Carrier</label><select class="form-select" value=${m.carrier} onChange=${e=>patch(i,{carrier:Number(e.target.value)})}>${[0,1,2,3].map(v=>html`<option value=${v}>${v}</option>`)}</select></div>
-        <div><label>Navigation systems</label><input class="form-control mono" value=${m.nav_system} onChange=${e=>patch(i,{nav_system:e.target.value})}/></div>
-        <div><label>Network</label><input class="form-control" value=${m.network} onChange=${e=>patch(i,{network:e.target.value})}/></div>
-        <div><label>Country</label><input class="form-control" maxlength="3" value=${m.country} onChange=${e=>patch(i,{country:e.target.value.toUpperCase()})}/></div>
-        <div><label>Generator</label><input class="form-control" value=${m.generator} onChange=${e=>patch(i,{generator:e.target.value})}/></div>
-        <div><label>Compression</label><input class="form-control" value=${m.compress} onChange=${e=>patch(i,{compress:e.target.value})}/></div>
-        <div><label>Authentication</label><select class="form-select" value=${m.auth} onChange=${e=>patch(i,{auth:e.target.value})}><option value="B">Basic (B)</option></select></div>
-        <div><label>Fee</label><select class="form-select" value=${m.fee} onChange=${e=>patch(i,{fee:e.target.value})}><option value="N">No</option><option value="Y">Yes</option></select></div>
-        <div><label>Bitrate (bit/s)</label><input class="form-control" type="number" min="0" value=${m.bitrate} onChange=${e=>patch(i,{bitrate:Number(e.target.value)})}/></div>
-        <div><label>NMEA requirement</label><input class="form-control" type="number" min="0" value=${m.nmea} onChange=${e=>patch(i,{nmea:Number(e.target.value)})}/></div>
-        <div><label>Solution</label><input class="form-control" type="number" min="0" value=${m.solution} onChange=${e=>patch(i,{solution:Number(e.target.value)})}/></div>
-        <div class="wide"><label>Format details</label><input class="form-control" value=${m.msm_detail||''} onChange=${e=>patch(i,{msm_detail:e.target.value})}/></div>
-        <div class="wide"><label>RTCM messages · TYPE:INTERVAL seconds</label><textarea class="mono" rows="4" value=${m.messages_text} onChange=${e=>patch(i,{messages_text:e.target.value})}></textarea></div>
+        <div><label>${t("Name")}</label><input class="form-control mono" value=${m.name} onChange=${e=>patch(i,{name:e.target.value})}/></div>
+        <div><label>${t("Source ID")}</label><input class="form-control" type="number" min="1" value=${m.source_id} onChange=${e=>patch(i,{source_id:Number(e.target.value)})}/></div>
+        <div><label>${t("Format")}</label><input class="form-control" value=${m.format} onChange=${e=>patch(i,{format:e.target.value})}/></div>
+        <div><label>${t("Carrier")}</label><select class="form-select" value=${m.carrier} onChange=${e=>patch(i,{carrier:Number(e.target.value)})}>${[0,1,2,3].map(v=>html`<option value=${v}>${v}</option>`)}</select></div>
+        <div><label>${t("Navigation systems")}</label><input class="form-control mono" value=${m.nav_system} onChange=${e=>patch(i,{nav_system:e.target.value})}/></div>
+        <div><label>${t("Network")}</label><input class="form-control" value=${m.network} onChange=${e=>patch(i,{network:e.target.value})}/></div>
+        <div><label>${t("Country")}</label><input class="form-control" maxlength="3" value=${m.country} onChange=${e=>patch(i,{country:e.target.value.toUpperCase()})}/></div>
+        <div><label>${t("Generator")}</label><input class="form-control" value=${m.generator} onChange=${e=>patch(i,{generator:e.target.value})}/></div>
+        <div><label>${t("Compression")}</label><input class="form-control" value=${m.compress} onChange=${e=>patch(i,{compress:e.target.value})}/></div>
+        <div><label>${t("Authentication")}</label><select class="form-select" value=${m.auth} onChange=${e=>patch(i,{auth:e.target.value})}><option value="B">${t("Basic (B)")}</option></select></div>
+        <div><label>${t("Fee")}</label><select class="form-select" value=${m.fee} onChange=${e=>patch(i,{fee:e.target.value})}><option value="N">${t("No")}</option><option value="Y">${t("Yes")}</option></select></div>
+        <div><label>${t("Bitrate (bit/s)")}</label><input class="form-control" type="number" min="0" value=${m.bitrate} onChange=${e=>patch(i,{bitrate:Number(e.target.value)})}/></div>
+        <div><label>${t("NMEA requirement")}</label><input class="form-control" type="number" min="0" value=${m.nmea} onChange=${e=>patch(i,{nmea:Number(e.target.value)})}/></div>
+        <div><label>${t("Solution")}</label><input class="form-control" type="number" min="0" value=${m.solution} onChange=${e=>patch(i,{solution:Number(e.target.value)})}/></div>
+        <div class="wide"><label>${t("Format details")}</label><input class="form-control" value=${m.msm_detail||''} onChange=${e=>patch(i,{msm_detail:e.target.value})}/></div>
+        <div class="wide"><label>${t("RTCM messages · TYPE:INTERVAL seconds")}</label><textarea class="mono" rows="4" value=${m.messages_text} onChange=${e=>patch(i,{messages_text:e.target.value})}></textarea></div>
       </div>
-      <p class="field-help">Sourcetable coordinates always follow the base position below; they cannot drift independently.</p>
-      ${runtime[m.name]&&runtime[m.name].sourcetable?html`<details class="sourcetable-preview"><summary>Live sourcetable record</summary><code>${runtime[m.name].sourcetable}</code></details>`:null}
+      <p class="field-help">${t("Sourcetable coordinates always follow the base position below; they cannot drift independently.")}</p>
+      ${runtime[m.name]&&runtime[m.name].sourcetable?html`<details class="sourcetable-preview"><summary>${t("Live sourcetable record")}</summary><code>${runtime[m.name].sourcetable}</code></details>`:null}
     </div>`)}</div>
-    <div class="form-actions"><button class="btn act" disabled=${busy} onClick=${save}>${busy?'Saving and restarting…':'Save mountpoints and restart'}</button></div>
+    <div class="form-actions"><button class="btn act" disabled=${busy} onClick=${save}>${busy?t('Saving and restarting…'):t('Save mountpoints and restart')}</button></div>
   </div>`;
 }
 
@@ -1598,17 +1605,17 @@ function BasePosition({ position, locked, onApplied, onError }) {
   if(!p)return null;
   const submit=async e=>{e.preventDefault();
     const next={latitude:Number(p.latitude),longitude:Number(p.longitude),height:Number(p.height)};
-    if(!confirm('Change the surveyed base position?\n\nThis updates receiver CFG-TMODE in RAM first. Corrections may move immediately. Verify the stream, then Keep to write both receiver flash and PSGNSSB configuration.'))return;
+    if(!confirm(t('Change the surveyed base position?\n\nThis updates receiver CFG-TMODE in RAM first. Corrections may move immediately. Verify the stream, then Keep to write both receiver flash and PSGNSSB configuration.')))return;
     try{onApplied(await api('/api/settings/position/apply',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(next)}));onError('');}
-    catch(x){onError(x.message||'Could not apply base position');}
+    catch(x){onError(x.message||t('Could not apply base position'));}
   };
-  return html`<div class="card settings-section position-card"><h2>Base position</h2>
-    <p class="muted">Enter surveyed geodetic latitude, longitude and ellipsoidal antenna-reference-point height. Use one consistent reference frame: an official ETRS89 realization is normally appropriate for European survey control; use WGS-84 only when your survey coordinates are explicitly WGS-84. The two are not interchangeable at centimetre precision. PSGNSSB converts the position for RTCM 1006 and keeps receiver CFG-TMODE aligned.</p>
+  return html`<div class="card settings-section position-card"><h2>${t("Base position")}</h2>
+    <p class="muted">${t("Enter surveyed geodetic latitude, longitude and ellipsoidal antenna-reference-point height. Use one consistent reference frame: an official ETRS89 realization is normally appropriate for European survey control; use WGS-84 only when your survey coordinates are explicitly WGS-84. The two are not interchangeable at centimetre precision. PSGNSSB converts the position for RTCM 1006 and keeps receiver CFG-TMODE aligned.")}</p>
     <form onSubmit=${submit}><div class="settings-fields position-fields">
-      <div><label>Latitude (degrees)</label><input class="form-control mono" type="number" step="0.000000001" min="-90" max="90" value=${p.latitude} onChange=${e=>setP({...p,latitude:e.target.value})}/></div>
-      <div><label>Longitude (degrees)</label><input class="form-control mono" type="number" step="0.000000001" min="-180" max="180" value=${p.longitude} onChange=${e=>setP({...p,longitude:e.target.value})}/></div>
-      <div><label>Ellipsoidal height (m)</label><input class="form-control mono" type="number" step="0.0001" value=${p.height} onChange=${e=>setP({...p,height:e.target.value})}/></div>
-    </div><div class="form-actions"><button class="btn act danger" type="submit" disabled=${locked}>Apply to RAM and verify</button></div></form>
+      <div><label>${t("Latitude (degrees)")}</label><input class="form-control mono" type="number" step="0.000000001" min="-90" max="90" value=${p.latitude} onChange=${e=>setP({...p,latitude:e.target.value})}/></div>
+      <div><label>${t("Longitude (degrees)")}</label><input class="form-control mono" type="number" step="0.000000001" min="-180" max="180" value=${p.longitude} onChange=${e=>setP({...p,longitude:e.target.value})}/></div>
+      <div><label>${t("Ellipsoidal height (m)")}</label><input class="form-control mono" type="number" step="0.0001" value=${p.height} onChange=${e=>setP({...p,height:e.target.value})}/></div>
+    </div><div class="form-actions"><button class="btn act danger" type="submit" disabled=${locked}>${t("Apply to RAM and verify")}</button></div></form>
   </div>`;
 }
 
@@ -1616,15 +1623,15 @@ function StationID({ value, locked, onApplied, onError }) {
   const [id,setID]=useState(value);
   useEffect(()=>setID(value),[value]);
   const submit=async e=>{e.preventDefault(); const n=Number(id);
-    if(!Number.isInteger(n)||n<0||n>4095){onError('Station ID must be between 0 and 4095');return;}
-    if(!confirm('Change the RTCM reference station ID to '+n+'?\n\nThis updates the receiver and generated RTCM together. Corrections may pause while PSGNSSB restarts after Keep.'))return;
+    if(!Number.isInteger(n)||n<0||n>4095){onError(t('Station ID must be between 0 and 4095'));return;}
+    if(!confirm(t('Change the RTCM reference station ID to {n}?\n\nThis updates the receiver and generated RTCM together. Corrections may pause while PSGNSSB restarts after Keep.',{n})))return;
     try{onApplied(await api('/api/settings/station-id/apply',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({station_id:n})}));onError('');}
-    catch(x){onError(x.message||'Could not apply station ID');}
+    catch(x){onError(x.message||t('Could not apply station ID'));}
   };
-  return html`<div class="card settings-section station-id-card"><h2>RTCM station ID</h2>
-    <p class="muted">The receiver's DF003 value and PSGNSSB-generated station messages must always match. This guarded transaction changes both.</p>
-    <form onSubmit=${submit}><div class="settings-fields"><div><label>Station ID</label><input class="form-control mono" type="number" min="0" max="4095" value=${id} onChange=${e=>setID(e.target.value)}/></div></div>
-    <div class="form-actions"><button class="btn act danger" type="submit" disabled=${locked||Number(id)===Number(value)}>Apply to RAM and verify</button></div></form>
+  return html`<div class="card settings-section station-id-card"><h2>${t("RTCM station ID")}</h2>
+    <p class="muted">${t("The receiver's DF003 value and PSGNSSB-generated station messages must always match. This guarded transaction changes both.")}</p>
+    <form onSubmit=${submit}><div class="settings-fields"><div><label>${t("Station ID")}</label><input class="form-control mono" type="number" min="0" max="4095" value=${id} onChange=${e=>setID(e.target.value)}/></div></div>
+    <div class="form-actions"><button class="btn act danger" type="submit" disabled=${locked||Number(id)===Number(value)}>${t("Apply to RAM and verify")}</button></div></form>
   </div>`;
 }
 
@@ -1632,40 +1639,40 @@ function GeneralSettings({ settings }) {
   const [g,setG]=useState(settings.general),[busy,setBusy]=useState(false),[err,setErr]=useState('');
   const set=(k,v)=>setG({...g,[k]:v});
   const save=async e=>{e.preventDefault();
-    if(!confirm('Save general configuration and restart PSGNSSB?\n\nChanging listener addresses, archive paths or retention affects live operation.'))return;
-    setBusy(true);setErr('');try{await api('/api/settings/general',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(g)});setTimeout(()=>window.location.reload(),3500);}catch(x){setErr(x.message||'Could not save settings');setBusy(false);}
+    if(!confirm(t('Save general configuration and restart PSGNSSB?\n\nChanging listener addresses, archive paths or retention affects live operation.')))return;
+    setBusy(true);setErr('');try{await api('/api/settings/general',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(g)});setTimeout(()=>window.location.reload(),3500);}catch(x){setErr(x.message||t('Could not save settings'));setBusy(false);}
   };
   const listeners=g.hub_listeners||[];
   const hidden=g.display_hidden_constellations||[];
 	const profiles=settings.board_profiles||[];
 	const activeProfile=profiles.find(p=>p.id===g.receiver_profile);
   const toggleShown=system=>set('display_hidden_constellations',hidden.includes(system)?hidden.filter(x=>x!==system):[...hidden,system]);
-  return html`<div class="card settings-section"><div class="card-title"><div><h2>Station and service configuration</h2></div></div>
+  return html`<div class="card settings-section"><div class="card-title"><div><h2>${t("Station and service configuration")}</h2></div></div>
     ${err?html`<p class="err">${err}</p>`:null}<form onSubmit=${save}><div class="settings-fields">
-      <div><label>Station name</label><input class="form-control" value=${g.station_name} onChange=${e=>set('station_name',e.target.value)} required/></div>
-      <div><label>Antenna descriptor</label><input class="form-control mono" value=${g.antenna} onChange=${e=>set('antenna',e.target.value)} required/></div>
-      <div><label>Receiver descriptor</label><input class="form-control" value=${g.receiver_description} onChange=${e=>set('receiver_description',e.target.value)}/></div>
-	  <div><label>Receiver board profile</label><select class="form-select" value=${g.receiver_profile||''} onChange=${e=>set('receiver_profile',e.target.value)}>
-		${profiles.map(p=>html`<option key=${p.id} value=${p.id} disabled=${!p.implemented}>${p.name} · ${p.receiver}${p.implemented?'':' (driver stub)'}</option>`)}</select></div>
+      <div><label>${t("Station name")}</label><input class="form-control" value=${g.station_name} onChange=${e=>set('station_name',e.target.value)} required/></div>
+      <div><label>${t("Antenna descriptor")}</label><input class="form-control mono" value=${g.antenna} onChange=${e=>set('antenna',e.target.value)} required/></div>
+      <div><label>${t("Receiver descriptor")}</label><input class="form-control" value=${g.receiver_description} onChange=${e=>set('receiver_description',e.target.value)}/></div>
+	  <div><label>${t("Receiver board profile")}</label><select class="form-select" value=${g.receiver_profile||''} onChange=${e=>set('receiver_profile',e.target.value)}>
+		${profiles.map(p=>html`<option key=${p.id} value=${p.id} disabled=${!p.implemented}>${p.name} · ${p.receiver}${p.implemented?'':' ('+t('driver stub')+')'}</option>`)}</select></div>
 	  ${activeProfile?html`<div class="wide field-help board-profile-note"><strong>${activeProfile.vendor}</strong> · ${activeProfile.protocol} · ${activeProfile.form_factors.join(', ')}<br/>${activeProfile.note}</div>`:null}
-      <div><label>NTRIP caster listen</label><input class="form-control mono" value=${g.caster_listen} onChange=${e=>set('caster_listen',e.target.value)}/></div>
-      <div><label>PROXY listener</label><input class="form-control mono" value=${g.proxy_listen} onChange=${e=>set('proxy_listen',e.target.value)} placeholder="disabled when blank"/></div>
-      <div><label>Web UI listen</label><input class="form-control mono" value=${g.web_listen} onChange=${e=>set('web_listen',e.target.value)}/></div>
-      ${listeners.map((l,i)=>html`<div key=${l.name}><label>${l.name||'Hub listener'} address</label><input class="form-control mono" value=${l.listen} onChange=${e=>{const a=listeners.map(x=>({...x}));a[i].listen=e.target.value;set('hub_listeners',a)}}/></div>`)}
-      <div><label>Archive mount path</label><input class="form-control mono" value=${g.archive_mount} onChange=${e=>set('archive_mount',e.target.value)} required/><div class="field-help">The SMB source currently mounted here is shown in Diagnostics.</div></div>
-      <div><label>Local spool path</label><input class="form-control mono" value=${g.archive_spool} onChange=${e=>set('archive_spool',e.target.value)} required/></div>
-      <div><label>Archive retention (days)</label><input class="form-control" type="number" min="0" max="3650" value=${g.archive_retention_days} onChange=${e=>set('archive_retention_days',Number(e.target.value))}/></div>
-      <div><label>Share sync interval (seconds)</label><input class="form-control" type="number" min="5" max="3600" value=${g.archive_sync_seconds} onChange=${e=>set('archive_sync_seconds',Number(e.target.value))}/></div>
-      <div><label>Telemetry retention (days)</label><input class="form-control" type="number" min="1" max="365" value=${g.telemetry_retention_days} onChange=${e=>set('telemetry_retention_days',Number(e.target.value))}/></div>
-      <div class="wide"><label>Map tile source</label><input class="form-control mono" value=${g.map_tiles||''} onChange=${e=>set('map_tiles',e.target.value)} placeholder="https://tile.openstreetmap.org/{z}/{x}/{y}.png"/><div class="field-help">Needs {z}, {x} and {y}, and https. PSGNSS fetches and caches tiles itself, sending a User-Agent that identifies this station, because a browser cannot and OpenStreetMap blocks anonymous requests. Their servers are donated: for anything more than an occasional look, use a provider you pay or one you host.</div></div>
-      <div><label>Map contact</label><input class="form-control" value=${g.map_contact||''} onChange=${e=>set('map_contact',e.target.value)} placeholder="you@example.org"/><div class="field-help">Sent in the User-Agent so a tile provider can ask this station to stop. Falls back to the station name.</div></div>
-      <div class="wide"><label>Map attribution</label><input class="form-control" value=${g.map_attribution||''} onChange=${e=>set('map_attribution',e.target.value)} placeholder="© OpenStreetMap contributors"/><div class="field-help">Required with a tile source. Tile providers ask for credit and OpenStreetMap's usage policy requires it.</div></div>
-      <div><label>Log level</label><select class="form-select" value=${g.logging_level} onChange=${e=>set('logging_level',e.target.value)}><option>debug</option><option>info</option><option>warn</option><option>error</option></select></div>
-      <div class="wide settings-subsection"><h3>Default constellation display</h3><p class="field-help">Checked constellations are shown by default on Dashboard and Data History. Unchecked ones start hidden and remain available from each page's Display controls.</p>
-        <div class="settings-checks">${Object.keys(PLOT_SYSTEMS).map(system=>html`<label class="check" key=${system}><input class="form-check-input" type="checkbox" checked=${!hidden.includes(system)} onChange=${()=>toggleShown(system)}/><span style=${{color:PLOT_SYSTEMS[system].color}}>${system}</span> shown by default</label>`)}</div></div>
-      <div class="wide settings-subsection"><h3>Automatic diagnosis</h3><div class="settings-checks"><label class="check"><input class="form-check-input" type="checkbox" checked=${!!g.diagnostics_auto} onChange=${e=>set('diagnostics_auto',e.target.checked)}/>Run diagnosis automatically while the Diagnostics page is open</label></div>
-        <div class="inline-field"><label>Run every</label><input class="form-control" type="number" min="1" max="1440" value=${g.diagnostics_interval_minutes} onChange=${e=>set('diagnostics_interval_minutes',Number(e.target.value))} disabled=${!g.diagnostics_auto}/><span>minutes</span></div></div>
-    </div><div class="form-actions"><button class="btn act" disabled=${busy}>${busy?'Saving and restarting…':'Save general settings'}</button></div></form>
+      <div><label>${t("NTRIP caster listen")}</label><input class="form-control mono" value=${g.caster_listen} onChange=${e=>set('caster_listen',e.target.value)}/></div>
+      <div><label>${t("PROXY listener")}</label><input class="form-control mono" value=${g.proxy_listen} onChange=${e=>set('proxy_listen',e.target.value)} placeholder=${t("disabled when blank")}/></div>
+      <div><label>${t("Web UI listen")}</label><input class="form-control mono" value=${g.web_listen} onChange=${e=>set('web_listen',e.target.value)}/></div>
+      ${listeners.map((l,i)=>html`<div key=${l.name}><label>${t('{name} address',{name:l.name||t('Hub listener')})}</label><input class="form-control mono" value=${l.listen} onChange=${e=>{const a=listeners.map(x=>({...x}));a[i].listen=e.target.value;set('hub_listeners',a)}}/></div>`)}
+      <div><label>${t("Archive mount path")}</label><input class="form-control mono" value=${g.archive_mount} onChange=${e=>set('archive_mount',e.target.value)} required/><div class="field-help">${t("The SMB source currently mounted here is shown in Diagnostics.")}</div></div>
+      <div><label>${t("Local spool path")}</label><input class="form-control mono" value=${g.archive_spool} onChange=${e=>set('archive_spool',e.target.value)} required/></div>
+      <div><label>${t("Archive retention (days)")}</label><input class="form-control" type="number" min="0" max="3650" value=${g.archive_retention_days} onChange=${e=>set('archive_retention_days',Number(e.target.value))}/></div>
+      <div><label>${t("Share sync interval (seconds)")}</label><input class="form-control" type="number" min="5" max="3600" value=${g.archive_sync_seconds} onChange=${e=>set('archive_sync_seconds',Number(e.target.value))}/></div>
+      <div><label>${t("Telemetry retention (days)")}</label><input class="form-control" type="number" min="1" max="365" value=${g.telemetry_retention_days} onChange=${e=>set('telemetry_retention_days',Number(e.target.value))}/></div>
+      <div class="wide"><label>${t("Map tile source")}</label><input class="form-control mono" value=${g.map_tiles||''} onChange=${e=>set('map_tiles',e.target.value)} placeholder="https://tile.openstreetmap.org/{z}/{x}/{y}.png"/><div class="field-help">${t('Needs {z}, {x} and {y}, and https. PSGNSS fetches and caches tiles itself, sending a User-Agent that identifies this station, because a browser cannot and OpenStreetMap blocks anonymous requests. Their servers are donated: for anything more than an occasional look, use a provider you pay or one you host.')}</div></div>
+      <div><label>${t("Map contact")}</label><input class="form-control" value=${g.map_contact||''} onChange=${e=>set('map_contact',e.target.value)} placeholder="you@example.org"/><div class="field-help">${t("Sent in the User-Agent so a tile provider can ask this station to stop. Falls back to the station name.")}</div></div>
+      <div class="wide"><label>${t("Map attribution")}</label><input class="form-control" value=${g.map_attribution||''} onChange=${e=>set('map_attribution',e.target.value)} placeholder="© OpenStreetMap contributors"/><div class="field-help">${t("Required with a tile source. Tile providers ask for credit and OpenStreetMap's usage policy requires it.")}</div></div>
+      <div><label>${t("Log level")}</label><select class="form-select" value=${g.logging_level} onChange=${e=>set('logging_level',e.target.value)}><option>debug</option><option>info</option><option>warn</option><option>error</option></select></div>
+      <div class="wide settings-subsection"><h3>${t("Default constellation display")}</h3><p class="field-help">${t("Checked constellations are shown by default on Dashboard and Data History. Unchecked ones start hidden and remain available from each page's Display controls.")}</p>
+        <div class="settings-checks">${Object.keys(PLOT_SYSTEMS).map(system=>html`<label class="check" key=${system}><input class="form-check-input" type="checkbox" checked=${!hidden.includes(system)} onChange=${()=>toggleShown(system)}/><span style=${{color:PLOT_SYSTEMS[system].color}}>${system}</span> ${t("shown by default")}</label>`)}</div></div>
+      <div class="wide settings-subsection"><h3>${t("Automatic diagnosis")}</h3><div class="settings-checks"><label class="check"><input class="form-check-input" type="checkbox" checked=${!!g.diagnostics_auto} onChange=${e=>set('diagnostics_auto',e.target.checked)}/>${t("Run diagnosis automatically while the Diagnostics page is open")}</label></div>
+        <div class="inline-field"><label>${t("Run every")}</label><input class="form-control" type="number" min="1" max="1440" value=${g.diagnostics_interval_minutes} onChange=${e=>set('diagnostics_interval_minutes',Number(e.target.value))} disabled=${!g.diagnostics_auto}/><span>${t("minutes")}</span></div></div>
+    </div><div class="form-actions"><button class="btn act" disabled=${busy}>${busy?t('Saving and restarting…'):t('Save general settings')}</button></div></form>
   </div>`;
 }
 
@@ -1673,11 +1680,11 @@ function AdminSettings() {
   const [rows,setRows]=useState([]),[err,setErr]=useState(''),[user,setUser]=useState(''),[pw,setPw]=useState('');
   const load=()=>api('/api/admins').then(setRows).catch(e=>setErr(e.message)); useEffect(()=>{load();},[]);
   const create=async e=>{e.preventDefault();try{await api('/api/admins',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:user,password:pw})});setUser('');setPw('');load();}catch(x){setErr(x.message)}};
-  const change=async name=>{const p=prompt('New password for '+name+' (minimum 8 characters)');if(!p)return;try{await api('/api/admins/'+encodeURIComponent(name)+'/password',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:p})});}catch(x){setErr(x.message)}};
-  const remove=async name=>{if(!confirm('Delete web administrator '+name+'?'))return;try{await api('/api/admins/'+encodeURIComponent(name),{method:'DELETE'});load();}catch(x){setErr(x.message)}};
-  return html`<div class="card settings-section"><div class="card-title"><div><h2>Web administrators</h2></div></div>
-    ${err?html`<p class="err">${err}</p>`:null}<div class="tbl-scroll"><table> class="table table-vcenter"<thead><tr><th>Account</th><th>Created</th><th>Last login</th><th></th></tr></thead><tbody>${rows.map(a=>html`<tr key=${a.username}><td class="mono">${a.username}</td><td>${fmtDateTime(a.created_at)}</td><td>${a.last_login?fmtDateTime(a.last_login):'Never'}</td><td><button class="user-link" onClick=${()=>change(a.username)}>Change password</button> · <button class="user-link bad-text" onClick=${()=>remove(a.username)}>Delete</button></td></tr>`)}</tbody></table></div>
-    <form class="admin-create" onSubmit=${create}><div class="settings-fields"><div><label>New administrator</label><input class="form-control" value=${user} onChange=${e=>setUser(e.target.value)} required pattern="[A-Za-z0-9_.-]+"/></div><div><label>Password</label><input class="form-control" type="password" minlength="8" value=${pw} onChange=${e=>setPw(e.target.value)} required/></div></div><div class="form-actions"><button class="btn act">Add administrator</button></div></form>
+  const change=async name=>{const p=prompt(t('New password for {name} (minimum 8 characters)',{name}));if(!p)return;try{await api('/api/admins/'+encodeURIComponent(name)+'/password',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:p})});}catch(x){setErr(x.message)}};
+  const remove=async name=>{if(!confirm(t('Delete web administrator {name}?',{name})))return;try{await api('/api/admins/'+encodeURIComponent(name),{method:'DELETE'});load();}catch(x){setErr(x.message)}};
+  return html`<div class="card settings-section"><div class="card-title"><div><h2>${t("Web administrators")}</h2></div></div>
+    ${err?html`<p class="err">${err}</p>`:null}<div class="tbl-scroll"><table class="table table-vcenter"><thead><tr><th>${t("Account")}</th><th>${t("Created")}</th><th>${t("Last login")}</th><th></th></tr></thead><tbody>${rows.map(a=>html`<tr key=${a.username}><td class="mono">${a.username}</td><td>${fmtDateTime(a.created_at)}</td><td>${a.last_login?fmtDateTime(a.last_login):t('Never')}</td><td><button class="user-link" onClick=${()=>change(a.username)}>${t("Change password")}</button> · <button class="user-link bad-text" onClick=${()=>remove(a.username)}>${t("Delete")}</button></td></tr>`)}</tbody></table></div>
+    <form class="admin-create" onSubmit=${create}><div class="settings-fields"><div><label>${t("New administrator")}</label><input class="form-control" value=${user} onChange=${e=>setUser(e.target.value)} required pattern="[A-Za-z0-9_.-]+"/></div><div><label>${t("Password")}</label><input class="form-control" type="password" minlength="8" value=${pw} onChange=${e=>setPw(e.target.value)} required/></div></div><div class="form-actions"><button class="btn act">${t("Add administrator")}</button></div></form>
   </div>`;
 }
 
@@ -1690,55 +1697,55 @@ const fmtMM=v=>v==null?'\u2014':Math.round(v)+' mm';
 
 function IntegrityMonitor() {
   const [data,setData]=useState(null),[form,setForm]=useState(null),[err,setErr]=useState(''),[busy,setBusy]=useState(false);
-  const load=useCallback(()=>api('/api/integrity').then(x=>{setData(x);setForm({...x.settings,password:''});setErr('')}).catch(e=>setErr(e.message||'Could not load external integrity settings')),[]);
+  const load=useCallback(()=>api('/api/integrity').then(x=>{setData(x);setForm({...x.settings,password:''});setErr('')}).catch(e=>setErr(e.message||t('Could not load external integrity settings'))),[]);
   useEffect(()=>{load();},[load]);
   useEffect(()=>{if(!data||!data.running)return;const t=setInterval(load,2000);return()=>clearInterval(t)},[data&&data.running,load]);
-  if(!form)return html`<div class="card settings-section"><h2>External position integrity</h2><p class=${err?'err':'muted'}>${err||'Loading…'}</p></div>`;
+  if(!form)return html`<div class="card settings-section"><h2>${t("External position integrity")}</h2><p class=${err?'err':'muted'}>${err||t('Loading…')}</p></div>`;
   const set=(k,v)=>setForm({...form,[k]:v});
-  const save=async e=>{e.preventDefault();setBusy(true);setErr('');const {has_password,...payload}=form;try{const x=await api('/api/integrity/settings',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});setData(x);setForm({...x.settings,password:''})}catch(x){setErr(x.message||'Could not save integrity settings')}finally{setBusy(false)}};
-  const run=async()=>{setBusy(true);setErr('');try{await api('/api/integrity/run',{method:'POST'});setData({...data,running:true})}catch(x){setErr(x.message||'Could not start comparison')}finally{setBusy(false)}};
+  const save=async e=>{e.preventDefault();setBusy(true);setErr('');const {has_password,...payload}=form;try{const x=await api('/api/integrity/settings',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});setData(x);setForm({...x.settings,password:''})}catch(x){setErr(x.message||t('Could not save integrity settings'))}finally{setBusy(false)}};
+  const run=async()=>{setBusy(true);setErr('');try{await api('/api/integrity/run',{method:'POST'});setData({...data,running:true})}catch(x){setErr(x.message||t('Could not start comparison'))}finally{setBusy(false)}};
   /* Cancelling releases the reference-network login immediately: many
      subscriptions allow one connection at a time, so a running check can keep a
      rover out of the field. */
-  const cancel=async()=>{setBusy(true);setErr('');try{setData(await api('/api/integrity/cancel',{method:'POST'}))}catch(x){setErr(x.message||'Could not cancel the check')}finally{setBusy(false)}};
+  const cancel=async()=>{setBusy(true);setErr('');try{setData(await api('/api/integrity/cancel',{method:'POST'}))}catch(x){setErr(x.message||t('Could not cancel the check'))}finally{setBusy(false)}};
   const last=data&&data.latest;
   const prog=data&&data.progress;
   const overrun=!!(prog&&prog.planned_s&&prog.elapsed_s>prog.planned_s);
   const elapsedPct=prog&&prog.planned_s?Math.min(100,Math.round(prog.elapsed_s/prog.planned_s*100)):0;
-  return html`<div class="card settings-section integrity-card"><div class="card-title"><div><h2>External position integrity</h2><p class="muted">Independently solves this antenna from its live RTCM observations against an external reference stream, then compares that result with the broadcast ETRS89/ellipsoidal base position. Any NTRIP network that serves this area works. Scheduled in UTC.</p></div>
+  return html`<div class="card settings-section integrity-card"><div class="card-title"><div><h2>${t("External position integrity")}</h2><p class="muted">${t("Independently solves this antenna from its live RTCM observations against an external reference stream, then compares that result with the broadcast ETRS89/ellipsoidal base position. Any NTRIP network that serves this area works. Scheduled in UTC.")}</p></div>
     <div class="integrity-actions">
-      <button class="btn act" type="button" disabled=${busy||data.running||!form.has_password} onClick=${run}>${data.running?'CHECK RUNNING…':'RUN CHECK NOW'}</button>
-      ${data.running?html`<button class="btn act danger" type="button" disabled=${busy} onClick=${cancel}>CANCEL CHECK</button>`:null}</div></div>
+      <button class="btn act" type="button" disabled=${busy||data.running||!form.has_password} onClick=${run}>${data.running?t('CHECK RUNNING…'):t('RUN CHECK NOW')}</button>
+      ${data.running?html`<button class="btn act danger" type="button" disabled=${busy} onClick=${cancel}>${t("CANCEL CHECK")}</button>`:null}</div></div>
     ${err?html`<p class="err">${err}</p>`:null}
     ${prog&&prog.running?html`<div class="integrity-progress">
-      <div class="diag-meter"><div><span>${INTEGRITY_PHASES[prog.phase]||'CHECK RUNNING'}</span>
+      <div class="diag-meter"><div><span>${t(INTEGRITY_PHASES[prog.phase]||'CHECK RUNNING')}</span>
         <span class="mono">${fmtElapsed(prog.elapsed_s)}${prog.planned_s?' / '+fmtElapsed(prog.planned_s):''}</span></div>
         <div class="diag-meter-track"><i style=${{width:elapsedPct+'%'}}></i></div>
-        <small>${overrun?'Observation window elapsed; RTKLIB is resolving the final solution.'
-          :!prog.epochs?'RTKLIB collects broadcast ephemeris from the receiver before it can solve anything; the first epochs usually appear about a minute in. Zero here is normal until then.'
-          :'The check continues on the base even if this page is closed. It holds one login on the reference network until it finishes or is cancelled.'}</small></div>
+        <small>${overrun?t('Observation window elapsed; RTKLIB is resolving the final solution.')
+          :!prog.epochs?t('RTKLIB collects broadcast ephemeris from the receiver before it can solve anything; the first epochs usually appear about a minute in. Zero here is normal until then.')
+          :t('The check continues on the base even if this page is closed. It holds one login on the reference network until it finishes or is cancelled.')}</small></div>
       <div class="integrity-grid">
-        <div class="rd"><div class="rd-l">Epochs solved</div><div class="rd-v mono">${fmtNum(prog.epochs||0)}</div></div>
-        <div class="rd"><div class="rd-l">Fixed</div><div class="rd-v mono">${fmtNum(prog.fixed||0)}</div></div>
-        <div class="rd"><div class="rd-l">Float</div><div class="rd-v mono">${fmtNum(prog.float||0)}</div></div>
-        <div class="rd"><div class="rd-l">Solution in use</div><div class="rd-v mono">${prog.solution&&prog.solution!=='none'?prog.solution:'not yet reached'}</div><small class="field-help">needs 3 fixed or 10 float</small></div>
-        <div class="rd"><div class="rd-l">Horizontal offset</div><div class="rd-v mono">${fmtMM(prog.horizontal_mm)}</div></div>
-        <div class="rd"><div class="rd-l">Vertical offset</div><div class="rd-v mono">${fmtMM(prog.vertical_mm)}</div></div>
+        <div class="rd"><div class="rd-l">${t("Epochs solved")}</div><div class="rd-v mono">${fmtNum(prog.epochs||0)}</div></div>
+        <div class="rd"><div class="rd-l">${t("Fixed")}</div><div class="rd-v mono">${fmtNum(prog.fixed||0)}</div></div>
+        <div class="rd"><div class="rd-l">${t("Float")}</div><div class="rd-v mono">${fmtNum(prog.float||0)}</div></div>
+        <div class="rd"><div class="rd-l">${t("Solution in use")}</div><div class="rd-v mono">${prog.solution&&prog.solution!=='none'?prog.solution:t('not yet reached')}</div><small class="field-help">${t("needs 3 fixed or 10 float")}</small></div>
+        <div class="rd"><div class="rd-l">${t("Horizontal offset")}</div><div class="rd-v mono">${fmtMM(prog.horizontal_mm)}</div></div>
+        <div class="rd"><div class="rd-l">${t("Vertical offset")}</div><div class="rd-v mono">${fmtMM(prog.vertical_mm)}</div></div>
       </div>
-      <p class="note">Offsets are provisional: they are the median of the solutions accepted so far and move until the window closes.</p>
+      <p class="note">${t("Offsets are provisional: they are the median of the solutions accepted so far and move until the window closes.")}</p>
     </div>`:null}
-    ${last?html`<div class="integrity-last"><span class=${'pill '+(last.status==='pass'?'ok':last.status==='fail'?'bad':'warn')}>${last.status}</span><strong>${last.detail}</strong><span class="muted mono">${fmtDateTime(last.finished_at*1000)}</span></div>`:html`<p class="note">No comparison has completed yet.</p>`}
+    ${last?html`<div class="integrity-last"><span class=${'pill '+(last.status==='pass'?'ok':last.status==='fail'?'bad':'warn')}>${t(last.status)}</span><strong>${last.detail}</strong><span class="muted mono">${fmtDateTime(last.finished_at*1000)}</span></div>`:html`<p class="note">${t("No comparison has completed yet.")}</p>`}
     <form onSubmit=${save}><div class="settings-fields">
-      <div class="wide settings-checks"><label class="check"><input class="form-check-input" type="checkbox" checked=${form.enabled} onChange=${e=>set('enabled',e.target.checked)}/>Run automatically once per UTC day</label></div>
-      <div><label>UTC schedule</label><input class="form-control" type="time" step="60" value=${form.schedule} onChange=${e=>set('schedule',e.target.value)} required/></div>
-      <div><label>Observation duration (min)</label><input class="form-control" type="number" min="5" max="120" value=${form.duration_minutes} onChange=${e=>set('duration_minutes',Number(e.target.value))}/></div>
-      <div><label>Horizontal tolerance (mm)</label><input class="form-control" type="number" min="1" max="10000" value=${form.tolerance_horizontal_mm} onChange=${e=>set('tolerance_horizontal_mm',Number(e.target.value))}/></div>
-      <div><label>Vertical tolerance (mm)</label><input class="form-control" type="number" min="1" max="10000" value=${form.tolerance_vertical_mm} onChange=${e=>set('tolerance_vertical_mm',Number(e.target.value))}/></div>
-      <div><label>Reference caster</label><input class="form-control mono" value=${form.host} onChange=${e=>set('host',e.target.value)} required/></div>
-      <div><label>Reference mountpoint</label><input class="form-control mono" value=${form.mountpoint} onChange=${e=>set('mountpoint',e.target.value)} required/></div>
-      <div><label>Reference username</label><input class="form-control" autoComplete="off" value=${form.username} onChange=${e=>set('username',e.target.value)} required=${form.enabled}/></div>
-      <div><label>Reference password</label><input class="form-control" type="password" autoComplete="new-password" value=${form.password} placeholder=${form.has_password?'Stored securely · blank keeps it':'Required before enabling'} onChange=${e=>set('password',e.target.value)}/></div>
-    </div><div class="form-actions"><button class="btn act" disabled=${busy}>${busy?'Saving…':'Save integrity settings'}</button></div></form>
+      <div class="wide settings-checks"><label class="check"><input class="form-check-input" type="checkbox" checked=${form.enabled} onChange=${e=>set('enabled',e.target.checked)}/>${t("Run automatically once per UTC day")}</label></div>
+      <div><label>${t("UTC schedule")}</label><input class="form-control" type="time" step="60" value=${form.schedule} onChange=${e=>set('schedule',e.target.value)} required/></div>
+      <div><label>${t("Observation duration (min)")}</label><input class="form-control" type="number" min="5" max="120" value=${form.duration_minutes} onChange=${e=>set('duration_minutes',Number(e.target.value))}/></div>
+      <div><label>${t("Horizontal tolerance (mm)")}</label><input class="form-control" type="number" min="1" max="10000" value=${form.tolerance_horizontal_mm} onChange=${e=>set('tolerance_horizontal_mm',Number(e.target.value))}/></div>
+      <div><label>${t("Vertical tolerance (mm)")}</label><input class="form-control" type="number" min="1" max="10000" value=${form.tolerance_vertical_mm} onChange=${e=>set('tolerance_vertical_mm',Number(e.target.value))}/></div>
+      <div><label>${t("Reference caster")}</label><input class="form-control mono" value=${form.host} onChange=${e=>set('host',e.target.value)} required/></div>
+      <div><label>${t("Reference mountpoint")}</label><input class="form-control mono" value=${form.mountpoint} onChange=${e=>set('mountpoint',e.target.value)} required/></div>
+      <div><label>${t("Reference username")}</label><input class="form-control" autoComplete="off" value=${form.username} onChange=${e=>set('username',e.target.value)} required=${form.enabled}/></div>
+      <div><label>${t("Reference password")}</label><input class="form-control" type="password" autoComplete="new-password" value=${form.password} placeholder=${form.has_password?t('Stored securely · blank keeps it'):t('Required before enabling')} onChange=${e=>set('password',e.target.value)}/></div>
+    </div><div class="form-actions"><button class="btn act" disabled=${busy}>${busy?t('Saving…'):t('Save integrity settings')}</button></div></form>
   </div>`;
 }
 
@@ -1748,11 +1755,11 @@ function Receiver({ position, stationID }) {
   const [busy, setBusy] = useState('');
   const [pending, setPending] = useState(null);
   const load = useCallback(async () => {
-    setBusy('Reading receiver configuration…');
+    setBusy(t('Reading receiver configuration…'));
     try { setData(await api('/api/receiver')); setPending(null); setErr(''); }
     catch (e) {
       if (e.body && e.body.pending) { setPending(e.body.pending); setErr(''); }
-      else setErr(e.message || 'Could not read receiver configuration');
+      else setErr(e.message || t('Could not read receiver configuration'));
     }
     setBusy('');
   }, []);
@@ -1760,34 +1767,34 @@ function Receiver({ position, stationID }) {
   /* Every control funnels through here: one verified RAM transaction. */
   const apply = async (label, changes) => {
     if (!changes.length) return;
-    setBusy('Applying to RAM and reading back…');
+    setBusy(t('Applying to RAM and reading back…'));
     try {
       const r = await api('/api/receiver/apply', {method:'POST', headers:{'Content-Type':'application/json'},
         body:JSON.stringify({label, changes})});
       setPending(r); setErr('');
-    } catch (x) { setErr(x.message || 'Receiver change failed'); }
+    } catch (x) { setErr(x.message || t('Receiver change failed')); }
     setBusy('');
   };
   const settle = async commit => {
-    setBusy(commit ? 'Writing BBR + Flash…' : 'Reverting RAM…');
+    setBusy(commit ? t('Writing BBR + Flash…') : t('Reverting RAM…'));
     try { await api('/api/receiver/' + (commit ? 'commit' : 'revert'), {method:'POST'}); const positionCommit=commit&&pending&&pending.label==='Base position'; setPending(null); await load(); if(positionCommit)setTimeout(()=>window.location.reload(),3000); }
-    catch (x) { setErr(x.message || 'Could not settle receiver change'); setBusy(''); }
+    catch (x) { setErr(x.message || t('Could not settle receiver change')); setBusy(''); }
   };
-  if (!data && !err && !pending) return html`<p class="muted">Reading receiver configuration…</p>`;
+  if (!data && !err && !pending) return html`<p class="muted">${t("Reading receiver configuration…")}</p>`;
   const sys = data && data.system;
   const locked = !!pending || !!busy;
   return html`<div class="receiver">
     ${err ? html`<div class="card error-card"><p class="err">${err}</p></div>` : null}
     ${data && !pending ? html`<${BasePosition} position=${position} locked=${locked} onApplied=${setPending} onError=${setErr}/>` : null}
     ${data ? html`<div class="strip receiver-id">
-	  ${readout('Board profile', data.board_profile ? data.board_profile.name : '—')}
-      ${readout('Model', data.model || '—')}${readout('Firmware', data.firmware || '—')}
-      ${readout('Hardware', data.hardware || '—')}${readout('Protocol', data.protocol || '—')}
-      ${readout('Receiver uptime', sys ? fmtUptime(sys.run_time_s) : 'unavailable')}
-      ${readout('Last restart', sys ? sys.boot_reason || ('type ' + sys.boot_type) : '—')}
-      ${readout('Constellations', (data.constellations || []).join(', ') || '—')}
+	  ${readout(t('Board profile'), data.board_profile ? data.board_profile.name : '—')}
+      ${readout(t('Model'), data.model || '—')}${readout(t('Firmware'), data.firmware || '—')}
+      ${readout(t('Hardware'), data.hardware || '—')}${readout(t('Protocol'), data.protocol || '—')}
+      ${readout(t('Receiver uptime'), sys ? fmtUptime(sys.run_time_s) : t('unavailable'))}
+      ${readout(t('Last restart'), sys ? sys.boot_reason || t('type {n}',{n:sys.boot_type}) : '—')}
+      ${readout(t('Constellations'), (data.constellations || []).join(', ') || '—')}
     </div>` : null}
-    ${data && data.system_error ? html`<p class="muted">Uptime could not be read: ${data.system_error}</p>` : null}
+    ${data && data.system_error ? html`<p class="muted">${t('Uptime could not be read:')} ${data.system_error}</p>` : null}
     ${busy ? html`<p class="muted">${busy}</p>` : null}
     ${pending ? html`<${PendingChange} pending=${pending} onSettle=${settle} onExpired=${load}/>` : null}
     ${data && !pending ? html`
@@ -1823,8 +1830,8 @@ function BackupSettings() {
 
   const download=async()=>{
     setErr('');setNote('');
-    if(short){setErr('The passphrase must be at least '+BACKUP_MIN_PASSPHRASE+' characters.');return}
-    if(pass!==confirmPass){setErr('The two passphrases do not match. A backup you cannot open is worse than none.');return}
+    if(short){setErr(t('The passphrase must be at least {n} characters.',{n:BACKUP_MIN_PASSPHRASE}));return}
+    if(pass!==confirmPass){setErr(t('The two passphrases do not match. A backup you cannot open is worse than none.'));return}
     setBusy(true);
     try{
       const r=await fetch('/api/backup',{method:'POST',credentials:'same-origin',
@@ -1835,8 +1842,8 @@ function BackupSettings() {
       const url=URL.createObjectURL(blob);
       const a=document.createElement('a');a.href=url;a.download=name;document.body.appendChild(a);a.click();
       a.remove();URL.revokeObjectURL(url);
-      setNote('Saved '+name+'. Keep it and its passphrase apart from this machine.');
-    }catch(e){setErr(e.message||'Backup failed')}
+      setNote(t('Saved {name}. Keep it and its passphrase apart from this machine.',{name}));
+    }catch(e){setErr(e.message||t('Backup failed'))}
     finally{setBusy(false)}
   };
 
@@ -1851,20 +1858,20 @@ function BackupSettings() {
       for(let i=0;i<bytes.length;i+=0x8000)out+=String.fromCharCode.apply(null,bytes.subarray(i,i+0x8000));
       resolve(btoa(out));
     };
-    fr.onerror=()=>reject(new Error('Could not read that file'));
+    fr.onerror=()=>reject(new Error(t('Could not read that file')));
     fr.readAsArrayBuffer(f);
   });
 
   const inspect=async()=>{
     setErr('');setNote('');setSummary(null);setTyped('');
-    if(!file){setErr('Choose a .psbk file first.');return}
+    if(!file){setErr(t('Choose a .psbk file first.'));return}
     setBusy(true);
     try{
       const data=await readFile(file);
       setSummary({...await api('/api/backup/inspect',{method:'POST',
         headers:{'Content-Type':'application/json'},
         body:JSON.stringify({passphrase:restorePass,data})}),data});
-    }catch(e){setErr(e.message||'Could not read that backup')}
+    }catch(e){setErr(e.message||t('Could not read that backup'))}
     finally{setBusy(false)}
   };
 
@@ -1873,64 +1880,54 @@ function BackupSettings() {
     try{
       const r=await api('/api/backup/restore',{method:'POST',headers:{'Content-Type':'application/json'},
         body:JSON.stringify({passphrase:restorePass,data:summary.data})});
-      setNote('Restored. The daemon is restarting and you have been signed out; sign in with the '+
-        'credentials from the backup. Rollback snapshot: '+r.rollback_snapshot);
+      setNote(t('Restored. The daemon is restarting and you have been signed out; sign in with the credentials from the backup. Rollback snapshot: {file}',{file:r.rollback_snapshot}));
       setSummary(null);setTyped('');
       setTimeout(()=>window.location.reload(),4000);
-    }catch(e){setErr(e.message||'Restore failed')}
+    }catch(e){setErr(e.message||t('Restore failed'))}
     finally{setBusy(false)}
   };
 
   return html`<div class="auto-grid">
     <div class="card settings-section backup-card">
-      <div class="card-title"><div><h2>Download a backup</h2>
-        <p class="muted">Configuration, administrators, NTRIP accounts and their access rules, the
-        integrity monitor and the push-out targets. Not telemetry, the connection log or the
-        receiver audit trail: those stay with this machine.</p></div></div>
-      <p class="note warn-note">The file contains every NTRIP password in usable form, because this
-        station stores them recoverably. It is encrypted with the passphrase below and nothing else —
-        the station's master key is not in it. Whoever has both the file and the passphrase has the
-        credentials. There is no way to recover a forgotten passphrase.</p>
+      <div class="card-title"><div><h2>${t("Download a backup")}</h2>
+        <p class="muted">${t("Configuration, administrators, NTRIP accounts and their access rules, the integrity monitor and the push-out targets. Not telemetry, the connection log or the receiver audit trail: those stay with this machine.")}</p></div></div>
+      <p class="note warn-note">${t("The file contains every NTRIP password in usable form, because this station stores them recoverably. It is encrypted with the passphrase below and nothing else — the station's master key is not in it. Whoever has both the file and the passphrase has the credentials. There is no way to recover a forgotten passphrase.")}</p>
       <div class="field-row two">
-        <p><label>Passphrase</label><input class="form-control" type="password" value=${pass} autoComplete="new-password"
+        <p><label>${t("Passphrase")}</label><input class="form-control" type="password" value=${pass} autoComplete="new-password"
           onChange=${e=>setPass(e.target.value)}/>
-          <small class="field-help">${short?('At least '+BACKUP_MIN_PASSPHRASE+' characters.'):'Long enough.'}</small></p>
-        <p><label>Repeat passphrase</label><input class="form-control" type="password" value=${confirmPass} autoComplete="new-password"
+          <small class="field-help">${short?t('At least {n} characters.',{n:BACKUP_MIN_PASSPHRASE}):t('Long enough.')}</small></p>
+        <p><label>${t("Repeat passphrase")}</label><input class="form-control" type="password" value=${confirmPass} autoComplete="new-password"
           onChange=${e=>setConfirmPass(e.target.value)}/></p>
       </div>
-      <div class="submit"><button class="btn act" disabled=${busy} onClick=${download}>Download backup</button></div>
+      <div class="submit"><button class="btn act" disabled=${busy} onClick=${download}>${t("Download backup")}</button></div>
     </div>
 
     <div class="card settings-section backup-card restore-card">
-      <div class="card-title"><div><h2>Restore from a backup</h2>
-        <p class="muted">Replaces the configuration, administrators, NTRIP accounts, integrity
-        settings and push-out targets with the file's. It does not merge.</p></div></div>
-      <p class="note warn-note">Every administrator session ends, this one included: you sign in again
-        with the credentials from the backup. A snapshot of the current settings is written next to
-        the database first, encrypted with the same passphrase, so there is a way back. The daemon
-        restarts at the end.</p>
+      <div class="card-title"><div><h2>${t("Restore from a backup")}</h2>
+        <p class="muted">${t("Replaces the configuration, administrators, NTRIP accounts, integrity settings and push-out targets with the file's. It does not merge.")}</p></div></div>
+      <p class="note warn-note">${t("Every administrator session ends, this one included: you sign in again with the credentials from the backup. A snapshot of the current settings is written next to the database first, encrypted with the same passphrase, so there is a way back. The daemon restarts at the end.")}</p>
       <div class="field-row two">
-        <p><label>Backup file</label><input class="form-control" type="file" accept=".psbk"
+        <p><label>${t("Backup file")}</label><input class="form-control" type="file" accept=".psbk"
           onChange=${e=>{setFile(e.target.files&&e.target.files[0]);setSummary(null);setTyped('')}}/></p>
-        <p><label>Passphrase</label><input class="form-control" type="password" value=${restorePass} autoComplete="off"
+        <p><label>${t("Passphrase")}</label><input class="form-control" type="password" value=${restorePass} autoComplete="off"
           onChange=${e=>{setRestorePass(e.target.value);setSummary(null);setTyped('')}}/></p>
       </div>
-      <div class="submit"><button class="btn act" disabled=${busy||!file} onClick=${inspect}>Open and check</button></div>
+      <div class="submit"><button class="btn act" disabled=${busy||!file} onClick=${inspect}>${t("Open and check")}</button></div>
       ${summary?html`<div class="settings-subsection">
-        <h3>This file contains</h3>
+        <h3>${t("This file contains")}</h3>
         <dl class="kv">
-          <dt>Station</dt><dd class="mono">${summary.station||'—'}</dd>
-          <dt>Taken</dt><dd class="mono">${fmtDateTime(summary.created)}</dd>
-          <dt>Built by</dt><dd class="mono">${summary.app_version||'—'}</dd>
-          <dt>Administrators</dt><dd class="mono">${summary.admins}</dd>
-          <dt>NTRIP accounts</dt><dd class="mono">${summary.users}</dd>
-          <dt>Mountpoints</dt><dd class="mono">${summary.mountpoints}</dd>
-          <dt>Push-out targets</dt><dd class="mono">${summary.push_targets}</dd>
+          <dt>${t("Station")}</dt><dd class="mono">${summary.station||'—'}</dd>
+          <dt>${t("Taken")}</dt><dd class="mono">${fmtDateTime(summary.created)}</dd>
+          <dt>${t("Built by")}</dt><dd class="mono">${summary.app_version||'—'}</dd>
+          <dt>${t("Administrators")}</dt><dd class="mono">${summary.admins}</dd>
+          <dt>${t("NTRIP accounts")}</dt><dd class="mono">${summary.users}</dd>
+          <dt>${t("Mountpoints")}</dt><dd class="mono">${summary.mountpoints}</dd>
+          <dt>${t("Push-out targets")}</dt><dd class="mono">${summary.push_targets}</dd>
         </dl>
         <div class="power-confirm">
-          <label>Type RESTORE to confirm
+          <label>${t("Type RESTORE to confirm")}
             <input class="form-control" value=${typed} onChange=${e=>setTyped(e.target.value)}/></label>
-          <button class="btn act danger" disabled=${busy||typed!=='RESTORE'} onClick=${restore}>Restore these settings</button>
+          <button class="btn act danger" disabled=${busy||typed!=='RESTORE'} onClick=${restore}>${t("Restore these settings")}</button>
         </div>
       </div>`:null}
     </div>
@@ -1949,12 +1946,12 @@ const blankTarget = sources => ({ name:'', enabled:false, source:sources[0]||'',
 function PushoutSettings() {
   const [data,setData]=useState(null),[rows,setRows]=useState([]),[err,setErr]=useState(''),[busy,setBusy]=useState(false);
   const load=useCallback(()=>api('/api/pushout').then(x=>{setData(x);setRows(x.targets.map(t=>({...t,password:''})));setErr('')})
-    .catch(e=>setErr(e.message||'Could not load push-out configuration')),[]);
+    .catch(e=>setErr(e.message||t('Could not load push-out configuration'))),[]);
   useEffect(()=>{load();},[load]);
   /* Live state moves on its own, so refresh while the page is open, but never
      over unsaved edits. */
   useEffect(()=>{const t=setInterval(()=>{if(!busy)api('/api/pushout').then(x=>setData(x)).catch(()=>{})},5000);return()=>clearInterval(t)},[busy]);
-  if(!data)return html`<div class="card settings-section"><h2>NTRIP push-out</h2><p class=${err?'err':'muted'}>${err||'Loading…'}</p></div>`;
+  if(!data)return html`<div class="card settings-section"><h2>${t("NTRIP push-out")}</h2><p class=${err?'err':'muted'}>${err||t('Loading…')}</p></div>`;
   const sources=data.sources||[];
   const set=(i,k,v)=>setRows(rows.map((r,n)=>n===i?{...r,[k]:v}:r));
   const live=name=>(data.targets||[]).find(t=>t.name===name)||{};
@@ -1963,49 +1960,49 @@ function PushoutSettings() {
           ({name,enabled,source,host,mountpoint,protocol,username,password}))};
       const x=await api('/api/pushout',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
       setData(x);setRows(x.targets.map(t=>({...t,password:''})));
-    }catch(x){setErr(x.message||'Could not save push-out configuration')}finally{setBusy(false)}};
-  return html`<div class="card settings-section pushout-card"><div class="card-title"><div><h2>NTRIP push-out</h2>
-      <p class="muted">Uploads a local mountpoint to a remote caster, so this base can feed an external network without anything in front of it. Each target sends exactly the bytes a rover connected here receives. A slow remote caster never delays the rovers served here.</p></div>
-      <button class="btn act" type="button" onClick=${()=>setRows([...rows,blankTarget(sources)])} disabled=${rows.length>=8}>+ Add target</button></div>
+    }catch(x){setErr(x.message||t('Could not save push-out configuration'))}finally{setBusy(false)}};
+  return html`<div class="card settings-section pushout-card"><div class="card-title"><div><h2>${t("NTRIP push-out")}</h2>
+      <p class="muted">${t("Uploads a local mountpoint to a remote caster, so this base can feed an external network without anything in front of it. Each target sends exactly the bytes a rover connected here receives. A slow remote caster never delays the rovers served here.")}</p></div>
+      <button class="btn act" type="button" onClick=${()=>setRows([...rows,blankTarget(sources)])} disabled=${rows.length>=8}>${t("+ Add target")}</button></div>
     ${err?html`<p class="err">${err}</p>`:null}
-    ${rows.length===0?html`<p class="note">No push targets configured. Nothing is uploaded anywhere.</p>`:null}
+    ${rows.length===0?html`<p class="note">${t("No push targets configured. Nothing is uploaded anywhere.")}</p>`:null}
     <form onSubmit=${save}>${rows.map((r,i)=>{const st=live(r.name);
       return html`<div class="mount-editor" key=${i}>
         <div class="mount-editor-head">
-          <label class="check"><input class="form-check-input" type="checkbox" checked=${r.enabled} onChange=${e=>set(i,'enabled',e.target.checked)}/>${r.name||'New target'}</label>
-          <span class=${'pill '+(PUSH_STATES[st.state]||'')}>${st.state||'stopped'}</span>
-          ${st.state==='connected'?html`<span class="mount-live mono">${fmtBytes(st.bytes_sent||0)} sent · ${st.connects||0} connects${st.dropped?' · '+st.dropped+' dropped':''}</span>`:null}
-          ${st.last_error?html`<span class="mount-live bad-text">${st.last_error}${st.next_attempt_in?' · retry in '+st.next_attempt_in+'s':''}</span>`:null}
-          <button class="user-link bad-text" type="button" onClick=${()=>setRows(rows.filter((_,n)=>n!==i))}>Remove</button>
+          <label class="check"><input class="form-check-input" type="checkbox" checked=${r.enabled} onChange=${e=>set(i,'enabled',e.target.checked)}/>${r.name||t('New target')}</label>
+          <span class=${'pill '+(PUSH_STATES[st.state]||'')}>${t(st.state||'stopped')}</span>
+          ${st.state==='connected'?html`<span class="mount-live mono">${t('{b} sent · {n} connects',{b:fmtBytes(st.bytes_sent||0),n:st.connects||0})}${st.dropped?' · '+t('{n} dropped',{n:st.dropped}):''}</span>`:null}
+          ${st.last_error?html`<span class="mount-live bad-text">${st.last_error}${st.next_attempt_in?' · '+t('retry in {n}s',{n:st.next_attempt_in}):''}</span>`:null}
+          <button class="user-link bad-text" type="button" onClick=${()=>setRows(rows.filter((_,n)=>n!==i))}>${t("Remove")}</button>
         </div>
         <div class="settings-fields">
-          <div><label>Target name</label><input class="form-control" value=${r.name} onChange=${e=>set(i,'name',e.target.value)} required maxlength="40"/></div>
-          <div><label>Local mountpoint to publish</label><select class="form-select" value=${r.source} onChange=${e=>set(i,'source',e.target.value)}>
+          <div><label>${t("Target name")}</label><input class="form-control" value=${r.name} onChange=${e=>set(i,'name',e.target.value)} required maxlength="40"/></div>
+          <div><label>${t("Local mountpoint to publish")}</label><select class="form-select" value=${r.source} onChange=${e=>set(i,'source',e.target.value)}>
             ${sources.map(m=>html`<option key=${m} value=${m}>${m}</option>`)}</select></div>
-          <div><label>Protocol</label><select class="form-select" value=${r.protocol} onChange=${e=>set(i,'protocol',e.target.value)}>
+          <div><label>${t("Protocol")}</label><select class="form-select" value=${r.protocol} onChange=${e=>set(i,'protocol',e.target.value)}>
             <option value="v2">NTRIP 2.0 (POST)</option><option value="v1">NTRIP 1.0 (SOURCE)</option></select></div>
-          <div><label>Remote caster</label><input class="form-control mono" value=${r.host} onChange=${e=>set(i,'host',e.target.value)} placeholder="caster.example.org:2101" required/></div>
-          <div><label>Remote mountpoint</label><input class="form-control mono" value=${r.mountpoint} onChange=${e=>set(i,'mountpoint',e.target.value)} required/></div>
-          <div><label>Username</label><input class="form-control" autoComplete="off" value=${r.username} onChange=${e=>set(i,'username',e.target.value)} required=${r.protocol==='v2'} disabled=${r.protocol==='v1'} placeholder=${r.protocol==='v1'?'not used by NTRIP 1.0':''}/></div>
-          <div><label>Password</label><input class="form-control" type="password" autoComplete="new-password" value=${r.password} onChange=${e=>set(i,'password',e.target.value)}
-            placeholder=${r.has_password?'Stored securely · blank keeps it':'Required before enabling'}/></div>
+          <div><label>${t("Remote caster")}</label><input class="form-control mono" value=${r.host} onChange=${e=>set(i,'host',e.target.value)} placeholder="caster.example.org:2101" required/></div>
+          <div><label>${t("Remote mountpoint")}</label><input class="form-control mono" value=${r.mountpoint} onChange=${e=>set(i,'mountpoint',e.target.value)} required/></div>
+          <div><label>${t("Username")}</label><input class="form-control" autoComplete="off" value=${r.username} onChange=${e=>set(i,'username',e.target.value)} required=${r.protocol==='v2'} disabled=${r.protocol==='v1'} placeholder=${r.protocol==='v1'?t('not used by NTRIP 1.0'):''}/></div>
+          <div><label>${t("Password")}</label><input class="form-control" type="password" autoComplete="new-password" value=${r.password} onChange=${e=>set(i,'password',e.target.value)}
+            placeholder=${r.has_password?t('Stored securely · blank keeps it'):t('Required before enabling')}/></div>
         </div></div>`})}
-      <div class="form-actions"><button class="btn act" disabled=${busy}>${busy?'Saving…':'Save push-out targets'}</button>
-        <span class="muted">Saving applies immediately; rovers connected here are not interrupted.</span></div></form>
+      <div class="form-actions"><button class="btn act" disabled=${busy}>${busy?t('Saving…'):t('Save push-out targets')}</button>
+        <span class="muted">${t("Saving applies immediately; rovers connected here are not interrupted.")}</span></div></form>
   </div>`;
 }
 
 function Settings() {
   const [settings,setSettings]=useState(null),[err,setErr]=useState(''),[section,setSection]=useState('station');
-  useEffect(()=>{api('/api/settings').then(setSettings).catch(e=>setErr(e.message||'Could not load settings'));},[]);
-  if(!settings)return html`<div>${err?html`<p class="err">${err}</p>`:html`<p class="muted">Loading settings…</p>`}</div>`;
+  useEffect(()=>{api('/api/settings').then(setSettings).catch(e=>setErr(e.message||t('Could not load settings')));},[]);
+  if(!settings)return html`<div>${err?html`<p class="err">${err}</p>`:html`<p class="muted">${t("Loading settings…")}</p>`}</div>`;
   /* Every section stays mounted and is hidden rather than unmounted, so a
      pending verified receiver change keeps its countdown and its Keep/Revert
      buttons while another section is open. */
   const panel=(key,body)=>html`<section class="settings-panel" key=${key} hidden=${section!==key}>${body}</section>`;
   return html`<div class="settings-page">
     <nav class="subnav">${Object.entries(SETTINGS_SECTIONS).map(([k,v])=>html`
-      <button key=${k} class=${section===k?'on':''} onClick=${()=>setSection(k)}>${v}</button>`)}
+      <button key=${k} class=${section===k?'on':''} onClick=${()=>setSection(k)}>${t(v)}</button>`)}
     </nav>
     ${panel('station',html`<${GeneralSettings} settings=${settings}/>`)}
     ${panel('receiver',html`<${Receiver} position=${settings.position} stationID=${settings.station.station_id}/>`)}
@@ -2035,24 +2032,24 @@ function PendingChange({ pending, onSettle, onExpired }) {
   }, [left === 0]);
   const cs = pending.changes || [];
   return html`<div class="card receiver-pending">
-    <div class="card-title"><h2>Verified RAM change pending${pending.label ? ' · ' + pending.label : ''}</h2>
-      <span class=${'pill ' + (left > 15 ? 'warn' : 'bad')}>${left ? 'auto-revert in ' + left + 's' : 'reverting…'}</span></div>
-    <p>These ${cs.length} key${cs.length === 1 ? ' is' : 's are'} live in RAM only, and were read back from the receiver.
-      Check the live stream and rovers, then keep or revert. Doing nothing reverts at ${fmtDateTime(pending.revert_at)}.</p>
-    <div class="tbl-scroll"><table> class="table table-vcenter"<thead><tr><th>Key</th><th>Before</th><th>Now in RAM</th><th>Verified</th></tr></thead><tbody>
+    <div class="card-title"><h2>${t('Verified RAM change pending')}${pending.label ? ' · ' + t(pending.label) : ''}</h2>
+      <span class=${'pill ' + (left > 15 ? 'warn' : 'bad')}>${left ? t('auto-revert in {n}s',{n:left}) : t('reverting…')}</span></div>
+    <p>${t(cs.length === 1 ? 'This key is live in RAM only, and was read back from the receiver.' : 'These {n} keys are live in RAM only, and were read back from the receiver.',{n:cs.length})}
+      ${t('Check the live stream and rovers, then keep or revert. Doing nothing reverts at {t}.',{t:fmtDateTime(pending.revert_at)})}</p>
+    <div class="tbl-scroll"><table class="table table-vcenter"><thead><tr><th>${t("Key")}</th><th>${t("Before")}</th><th>${t("Now in RAM")}</th><th>${t("Verified")}</th></tr></thead><tbody>
       ${cs.map(c => html`<tr key=${c.key}><td>${keyLabel(c)}</td><td class="mono">${c.old_display}</td>
-        <td class="mono">${c.display}</td><td>${c.verified ? html`<span class="pill ok">read back</span>` : html`<span class="pill bad">no</span>`}</td></tr>`)}
+        <td class="mono">${c.display}</td><td>${c.verified ? html`<span class="pill ok">${t("read back")}</span>` : html`<span class="pill bad">${t("no")}</span>`}</td></tr>`)}
     </tbody></table></div>
     <div class="form-actions">
-      <button class="btn act" onClick=${() => onSettle(true)}>Keep and write BBR + Flash</button>
-      <button class="btn act danger" onClick=${() => onSettle(false)}>Revert now</button>
+      <button class="btn act" onClick=${() => onSettle(true)}>${t("Keep and write BBR + Flash")}</button>
+      <button class="btn act danger" onClick=${() => onSettle(false)}>${t("Revert now")}</button>
     </div>
   </div>`;
 }
 
 const keyLabel = r => r.documented
   ? html`<span title=${r.desc || ''}>${r.name}</span> <span class="muted mono">${r.key}</span>`
-  : html`<span class="muted">Undocumented key</span> <span class="mono">${r.key}</span>`;
+  : html`<span class="muted">${t("Undocumented key")}</span> <span class="mono">${r.key}</span>`;
 
 function MessageRates({ data, locked, onApply, onRefresh }) {
   const [proto, setProto] = useState('RTCM');
@@ -2072,19 +2069,18 @@ function MessageRates({ data, locked, onApply, onRefresh }) {
   const summary = changes.map(c => byKey[c.key].m.label + ' ' + byKey[c.key].port + ' → ' + c.text).join(', ');
   const touchesUSB = changes.some(c => byKey[c.key].port === 'USB');
   const submit = () => {
-    const warn = touchesUSB ? '\n\nUSB is the port PSGNSSB reads. Changing it changes what the hub, mountpoints and archives receive.' : '';
-    if (confirm('Apply to receiver RAM with auto-revert?\n\n' + summary + warn)) { onApply('Message output rates', changes); setDraft({}); }
+    const warn = touchesUSB ? '\n\n' + t('USB is the port PSGNSSB reads. Changing it changes what the hub, mountpoints and archives receive.') : '';
+    if (confirm(t('Apply to receiver RAM with auto-revert?') + '\n\n' + summary + warn)) { onApply('Message output rates', changes); setDraft({}); }
   };
   return html`<div class="card">
-    <div class="card-title"><h2>Output messages and rates</h2>
-      <button class="btn act" onClick=${onRefresh} disabled=${locked}>Refresh from receiver</button></div>
-    <p class="muted">Rate is the number of navigation epochs between outputs; 0 disables the message on that port.
-      PSGNSSB reads the receiver on USB. Mountpoint message filters are separate and are not changed here.</p>
+    <div class="card-title"><h2>${t("Output messages and rates")}</h2>
+      <button class="btn act" onClick=${onRefresh} disabled=${locked}>${t("Refresh from receiver")}</button></div>
+    <p class="muted">${t("Rate is the number of navigation epochs between outputs; 0 disables the message on that port. PSGNSSB reads the receiver on USB. Mountpoint message filters are separate and are not changed here.")}</p>
     <div class="quick">
       <div class="seg">${['RTCM', 'UBX', 'NMEA', 'All'].map(p => html`<button key=${p} class=${proto === p ? 'on' : ''} onClick=${() => setProto(p)}>${p}</button>`)}</div>
-      <label class="check"><input class="form-check-input" type="checkbox" checked=${onlyActive} onChange=${e => setOnlyActive(e.target.checked)}/> Only messages enabled on some port</label>
+      <label class="check"><input class="form-check-input" type="checkbox" checked=${onlyActive} onChange=${e => setOnlyActive(e.target.checked)}/> ${t("Only messages enabled on some port")}</label>
     </div>
-    <div class="tbl-scroll msg-rates"><table> class="table table-vcenter"<thead><tr><th>Message</th>${ports.map(p => html`<th key=${p}>${p}</th>`)}</tr></thead><tbody>
+    <div class="tbl-scroll msg-rates"><table class="table table-vcenter"><thead><tr><th>${t("Message")}</th>${ports.map(p => html`<th key=${p}>${p}</th>`)}</tr></thead><tbody>
       ${msgs.map(m => html`<tr key=${m.id}><td>${m.label}</td>${ports.map(port => {
         const p = m.ports[port];
         if (!p) return html`<td key=${port} class="muted">—</td>`;
@@ -2093,11 +2089,11 @@ function MessageRates({ data, locked, onApply, onRefresh }) {
           type="number" min="0" max="255" value=${v} disabled=${locked} title=${p.key}
           onChange=${e => set(p, e.target.value)}/></td>`;
       })}</tr>`)}
-      ${msgs.length ? null : html`<tr><td colspan=${ports.length + 1} class="muted">No messages match.</td></tr>`}
+      ${msgs.length ? null : html`<tr><td colspan=${ports.length + 1} class="muted">${t("No messages match.")}</td></tr>`}
     </tbody></table></div>
     <div class="form-actions">
-      <button class="btn act" disabled=${locked || !changes.length} onClick=${submit}>Apply ${changes.length || ''} rate change${changes.length === 1 ? '' : 's'} to RAM</button>
-      ${changes.length ? html`<button class="btn act" onClick=${() => setDraft({})}>Discard</button><span class="muted">${summary}</span>` : null}
+      <button class="btn act" disabled=${locked || !changes.length} onClick=${submit}>${t(changes.length === 1 ? 'Apply {n} rate change to RAM' : 'Apply {n} rate changes to RAM',{n:changes.length || ''})}</button>
+      ${changes.length ? html`<button class="btn act" onClick=${() => setDraft({})}>${t("Discard")}</button><span class="muted">${summary}</span>` : null}
     </div>
   </div>`;
 }
@@ -2112,26 +2108,26 @@ function SignalToggles({ data, locked, onApply }) {
   const changes = Object.entries(draft).map(([key, on]) => ({key, text: on ? 'true' : 'false'}));
   const submit = () => {
     const off = cons.filter(c => draft[c.key] === false).map(c => c.label);
-    const msg = 'Apply signal configuration to receiver RAM with auto-revert?\n\n' +
-      'u-blox: signal changes reset the GNSS subsystem. Tracking restarts, and rovers lose corrections until it has reacquired.' +
-      (off.length ? '\n\nDisabling ' + off.join(', ') + ' removes it from every mountpoint.' : '');
+    const msg = t('Apply signal configuration to receiver RAM with auto-revert?') + '\n\n' +
+      t('u-blox: signal changes reset the GNSS subsystem. Tracking restarts, and rovers lose corrections until it has reacquired.') +
+      (off.length ? '\n\n' + t('Disabling {list} removes it from every mountpoint.',{list:off.join(', ')}) : '');
     if (confirm(msg)) { onApply('Constellations and signals', changes); setDraft({}); }
   };
   return html`<div class="card">
-    <h2>Constellations and signals</h2>
-    <p class="muted">A signal takes effect only while its constellation is enabled. Systems not listed by MON-VER are not supported by this firmware and are marked as such.</p>
+    <h2>${t("Constellations and signals")}</h2>
+    <p class="muted">${t("A signal takes effect only while its constellation is enabled. Systems not listed by MON-VER are not supported by this firmware and are marked as such.")}</p>
     <div class="signal-grid">${cons.map(c => html`<div class=${'signal-sys' + (c.supported ? '' : ' unsupported')} key=${c.id}>
       <label class="check sys-toggle"><input class="form-check-input" type="checkbox" checked=${val(c.key)} disabled=${locked} onChange=${e => toggle(c.key, e.target.checked)}/>
         <strong>${c.label}</strong>
-        ${c.supported ? null : html`<span class="pill warn">not in firmware</span>`}
-        ${draft[c.key] !== undefined ? html`<span class="pill warn">changed</span>` : null}</label>
+        ${c.supported ? null : html`<span class="pill warn">${t("not in firmware")}</span>`}
+        ${draft[c.key] !== undefined ? html`<span class="pill warn">${t("changed")}</span>` : null}</label>
       ${c.signals.map(s => html`<label class="check" key=${s.key} title=${s.key}>
         <input class="form-check-input" type="checkbox" checked=${val(s.key)} disabled=${locked || !val(c.key)} onChange=${e => toggle(s.key, e.target.checked)}/>
-        ${s.label}${draft[s.key] !== undefined ? html` <span class="pill warn">changed</span>` : null}</label>`)}
+        ${s.label}${draft[s.key] !== undefined ? html` <span class="pill warn">${t("changed")}</span>` : null}</label>`)}
     </div>`)}</div>
     <div class="form-actions">
-      <button class="btn act" disabled=${locked || !changes.length} onClick=${submit}>Apply ${changes.length || ''} signal change${changes.length === 1 ? '' : 's'} to RAM</button>
-      ${changes.length ? html`<button class="btn act" onClick=${() => setDraft({})}>Discard</button>` : null}
+      <button class="btn act" disabled=${locked || !changes.length} onClick=${submit}>${t(changes.length === 1 ? 'Apply {n} signal change to RAM' : 'Apply {n} signal changes to RAM',{n:changes.length || ''})}</button>
+      ${changes.length ? html`<button class="btn act" onClick=${() => setDraft({})}>${t("Discard")}</button>` : null}
     </div>
   </div>`;
 }
@@ -2145,30 +2141,30 @@ function RawKeys({ data, locked, onApply }) {
   const pick = r => { setSel(r); setText(r.documented ? (r.type === 'L' ? r.display : (r.enum ? r.display.split(' ')[0] : rawNumber(r))) : 'hex:' + r.value); };
   const submit = e => {
     e.preventDefault();
-    if (confirm('Apply ' + (sel.name || sel.key) + ' = ' + text + ' to RAM with auto-revert?')) onApply('Advanced key edit', [{key: sel.key, text}]);
+    if (confirm(t('Apply {k} = {v} to RAM with auto-revert?',{k:sel.name || sel.key,v:text}))) onApply('Advanced key edit', [{key: sel.key, text}]);
   };
   return html`<div class="card">
-    <div class="card-title"><h2>Advanced: individual configuration keys</h2>
-      <button class="btn act" onClick=${() => setOpen(!open)}>${open ? 'Hide' : 'Show'}</button></div>
-    <p class="muted">For keys without a dedicated control above. Names, units and constants come from the u-blox HPG interface description; keys u-blox does not document are marked and take raw hex.</p>
+    <div class="card-title"><h2>${t("Advanced: individual configuration keys")}</h2>
+      <button class="btn act" onClick=${() => setOpen(!open)}>${open ? t('Hide') : t('Show')}</button></div>
+    <p class="muted">${t("For keys without a dedicated control above. Names, units and constants come from the u-blox HPG interface description; keys u-blox does not document are marked and take raw hex.")}</p>
     ${open ? html`<div>
       ${sel ? html`<form class="user-form raw-edit" onSubmit=${submit}>
-        <div class="field"><label>${sel.documented ? sel.name : 'Undocumented key'} <span class="mono">${sel.key}</span></label>
+        <div class="field"><label>${sel.documented ? sel.name : t('Undocumented key')} <span class="mono">${sel.key}</span></label>
           <input class="form-control mono" value=${text} onChange=${e => setText(e.target.value)} disabled=${locked} required/>
           <div class="field-help">${sel.desc || ''} ${valueHelp(sel)}</div></div>
-        <div class="form-actions"><button class="btn act" type="submit" disabled=${locked}>Apply to RAM and verify</button>
-          <button class="btn act" type="button" onClick=${() => setSel(null)}>Cancel</button></div>
+        <div class="form-actions"><button class="btn act" type="submit" disabled=${locked}>${t("Apply to RAM and verify")}</button>
+          <button class="btn act" type="button" onClick=${() => setSel(null)}>${t("Cancel")}</button></div>
       </form>` : null}
-      <input class="form-control" placeholder="Filter by name, key or description" value=${q} onInput=${e => setQ(e.target.value)}/>
+      <input class="form-control" placeholder=${t("Filter by name, key or description")} value=${q} onInput=${e => setQ(e.target.value)}/>
       ${(data.groups || []).map(g => {
         const rows = (g.keys || []).filter(k => !needle || (k.name || '').toLowerCase().includes(needle) ||
           k.key.toLowerCase().includes(needle) || (k.desc || '').toLowerCase().includes(needle));
         if (!g.error && !rows.length) return null;
         return html`<div key=${g.name} class="raw-group"><h3>${g.name} <span class="muted">(${rows.length})</span></h3>
-          ${g.error ? html`<p class="err">${g.error}</p>` : html`<div class="tbl-scroll raw-scroll"><table> class="table table-vcenter"<thead><tr><th>Key</th><th>Value</th><th></th></tr></thead><tbody>
+          ${g.error ? html`<p class="err">${g.error}</p>` : html`<div class="tbl-scroll raw-scroll"><table class="table table-vcenter"><thead><tr><th>${t("Key")}</th><th>${t("Value")}</th><th></th></tr></thead><tbody>
           ${rows.slice(0, 300).map(k => html`<tr key=${k.key}><td>${keyLabel(k)}</td><td class="mono">${k.display}</td>
-            <td><button class="user-link" disabled=${locked} onClick=${() => pick(k)}>Edit</button></td></tr>`)}
-          ${rows.length > 300 ? html`<tr><td colspan="3" class="muted">${rows.length - 300} more — refine the filter.</td></tr>` : null}
+            <td><button class="user-link" disabled=${locked} onClick=${() => pick(k)}>${t("Edit")}</button></td></tr>`)}
+          ${rows.length > 300 ? html`<tr><td colspan="3" class="muted">${t('{n} more — refine the filter.',{n:rows.length - 300})}</td></tr>` : null}
           </tbody></table></div>`}</div>`;
       })}
     </div>` : null}
@@ -2178,10 +2174,10 @@ function RawKeys({ data, locked, onApply }) {
 /* Number without the display's scale and unit: what ParseValue expects. */
 const rawNumber = r => r.display.split(' ')[0];
 const valueHelp = r => {
-  if (!r.documented) return 'Little-endian bytes, e.g. hex:01.';
-  if (r.type === 'L') return 'true or false.';
-  if (r.enum) return 'One of: ' + r.enum.map(e => e.name).join(', ') + '.';
-  if (r.scale) return 'Enter unscaled units (value × ' + r.scale + (r.unit ? ' ' + r.unit : '') + ').';
+  if (!r.documented) return t('Little-endian bytes, e.g. hex:01.');
+  if (r.type === 'L') return t('true or false.');
+  if (r.enum) return t('One of:') + ' ' + r.enum.map(e => e.name).join(', ') + '.';
+  if (r.scale) return t('Enter unscaled units (value × {s}).',{s:r.scale + (r.unit ? ' ' + r.unit : '')});
   return (r.type || '') + (r.unit ? ', ' + r.unit : '') + '.';
 };
 
@@ -2213,35 +2209,35 @@ function LogViewer() {
         setRows((r.lines||[]).slice().reverse());
       }
       setErr('');
-    }catch(e){setErr(e.message||'Could not read the log')}
+    }catch(e){setErr(e.message||t('Could not read the log'))}
     finally{setBusy(false)}
   },[source,window_,level,q]);
   useEffect(()=>{load()},[load]);
   useEffect(()=>{if(!auto)return;const t=setInterval(load,10000);return()=>clearInterval(t)},[auto,load]);
   return html`<div class="card log-card"><div class="card-title">
-      <div><h2>Daemon log</h2><p class="muted">${source==='memory'
-        ?'The last 1000 entries this daemon has logged since it started. Lost on restart.'
-        :'Read from the systemd journal, so it survives restarts and reboots.'}</p></div>
-      ${source==='journal'?html`<a class="btn act" href=${'/api/logs/download?window='+window_+'&limit=5000&level='+encodeURIComponent(level)+'&q='+encodeURIComponent(q)}>↓ Download</a>`:null}
+      <div><h2>${t("Daemon log")}</h2><p class="muted">${source==='memory'
+        ?t('The last 1000 entries this daemon has logged since it started. Lost on restart.')
+        :t('Read from the systemd journal, so it survives restarts and reboots.')}</p></div>
+      ${source==='journal'?html`<a class="btn act" href=${'/api/logs/download?window='+window_+'&limit=5000&level='+encodeURIComponent(level)+'&q='+encodeURIComponent(q)}>${t("↓ Download")}</a>`:null}
     </div>
     <div class="log-filters">
-      <div><label>Source</label><select class="form-select" value=${source} onChange=${e=>setSource(e.target.value)}>
-        ${Object.entries(LOG_SOURCES).map(([k,v])=>html`<option key=${k} value=${k}>${v}</option>`)}</select></div>
-      <div><label>Window</label><select class="form-select" value=${window_} disabled=${source!=='journal'} onChange=${e=>setWindow(e.target.value)}>
-        ${Object.entries(LOG_WINDOWS).map(([k,v])=>html`<option key=${k} value=${k}>${v}</option>`)}</select></div>
-      <div><label>Level</label><select class="form-select" value=${level} onChange=${e=>setLevel(e.target.value)}>
+      <div><label>${t("Source")}</label><select class="form-select" value=${source} onChange=${e=>setSource(e.target.value)}>
+        ${Object.entries(LOG_SOURCES).map(([k,v])=>html`<option key=${k} value=${k}>${t(v)}</option>`)}</select></div>
+      <div><label>${t("Window")}</label><select class="form-select" value=${window_} disabled=${source!=='journal'} onChange=${e=>setWindow(e.target.value)}>
+        ${Object.entries(LOG_WINDOWS).map(([k,v])=>html`<option key=${k} value=${k}>${t(v)}</option>`)}</select></div>
+      <div><label>${t("Level")}</label><select class="form-select" value=${level} onChange=${e=>setLevel(e.target.value)}>
         ${LOG_LEVELS.map(l=>html`<option key=${l} value=${l}>${l}</option>`)}</select></div>
-      <div><label>Contains</label><input class="form-control" value=${q} placeholder="mountpoint, ip, message…" onChange=${e=>setQ(e.target.value)}/></div>
-      <div class="log-actions"><button class="btn act" type="button" onClick=${load} disabled=${busy}>${busy?'Reading…':'Refresh'}</button>
-        <label class="check"><input class="form-check-input" type="checkbox" checked=${auto} onChange=${e=>setAuto(e.target.checked)}/>every 10 s</label></div>
+      <div><label>${t("Contains")}</label><input class="form-control" value=${q} placeholder=${t("mountpoint, ip, message…")} onChange=${e=>setQ(e.target.value)}/></div>
+      <div class="log-actions"><button class="btn act" type="button" onClick=${load} disabled=${busy}>${busy?t('Reading…'):t('Refresh')}</button>
+        <label class="check"><input class="form-check-input" type="checkbox" checked=${auto} onChange=${e=>setAuto(e.target.checked)}/>${t("every 10 s")}</label></div>
     </div>
     ${err?html`<p class="err">${err}</p>`:null}
     <div class="log-lines">
       ${rows.length?rows.map((l,i)=>html`<div class=${'log-line '+(l.level||'INFO').toLowerCase()} key=${i}>
         <span class="mono">${l.time?fmtDateTime(l.time):''}</span><b>${l.level||''}</b><code>${l.message}</code></div>`)
-        :html`<p class="muted">Nothing matched.</p>`}
+        :html`<p class="muted">${t("Nothing matched.")}</p>`}
     </div>
-    <p class="note">${rows.length} line${rows.length===1?'':'s'} shown, newest first.</p>
+    <p class="note">${t(rows.length===1?'{n} line shown, newest first.':'{n} lines shown, newest first.',{n:rows.length})}</p>
   </div>`;
 }
 
@@ -2266,47 +2262,55 @@ function PowerControls() {
     try{
       await api(act.path,{method:'POST',headers:{'Content-Type':'application/json'},
         body:JSON.stringify(pending==='restart'?{confirm:act.confirm}:{action:pending,confirm:act.confirm})});
-      setDone(act.label+' requested. '+(pending==='shutdown'
-        ?'This page will stop responding; the Pi needs a physical power-on.'
-        :'This page will stop responding for a moment and then come back.'));
+      setDone(t('{action} requested.',{action:t(act.label)})+' '+(pending==='shutdown'
+        ?t('This page will stop responding; the Pi needs a physical power-on.')
+        :t('This page will stop responding for a moment and then come back.')));
       setPending('');setTyped('');
-    }catch(e){setErr(e.message||'The request was refused')}
+    }catch(e){setErr(e.message||t('The request was refused'))}
   };
-  return html`<div class="card power-card"><div class="card-title"><div><h2>Power</h2>
-    <p class="muted">Restarting or powering down interrupts corrections for every connected rover.</p></div></div>
+  return html`<div class="card power-card"><div class="card-title"><div><h2>${t("Power")}</h2>
+    <p class="muted">${t("Restarting or powering down interrupts corrections for every connected rover.")}</p></div></div>
     ${err?html`<p class="err">${err}</p>`:null}
     ${done?html`<p class="note">${done}</p>`:null}
     <div class="power-actions">
       ${Object.entries(POWER_ACTIONS).map(([k,a])=>html`<div class="power-action" key=${k}>
-        <b>${a.label}</b><small>${a.note}</small>
+        <b>${t(a.label)}</b><small>${t(a.note)}</small>
         <button class=${'act'+(k==='restart'?'':' danger')} type="button"
           onClick=${()=>{setPending(pending===k?'':k);setTyped('');setErr('');setDone('')}}>
-          ${pending===k?'Cancel':a.label}</button></div>`)}
+          ${pending===k?t('Cancel'):t(a.label)}</button></div>`)}
     </div>
     ${act?html`<div class="power-confirm">
-      <label>Type <b class="mono">${act.confirm}</b> to confirm</label>
+      <label>${t("Type")} <b class="mono">${act.confirm}</b> ${t("to confirm")}</label>
       <input class="form-control mono" value=${typed} autoFocus onChange=${e=>setTyped(e.target.value)}/>
-      <button class="btn act danger" type="button" disabled=${typed!==act.confirm} onClick=${go}>${act.label}</button>
+      <button class="btn act danger" type="button" disabled=${typed!==act.confirm} onClick=${go}>${t(act.label)}</button>
     </div>`:null}
   </div>`;
 }
 
+/* Check names come from the server. Most are fixed; the rest are a fixed
+   prefix and the name of a mountpoint, archive or target, which stays as is. */
+const CHECK_PREFIXES = ['Mountpoint ', 'Archive ', 'NTRIP push-out · ', 'RTCM output · '];
+const checkName = name => {
+  const p = CHECK_PREFIXES.find(x => name.startsWith(x));
+  return p ? t(p.replace(/[ ·]+$/, '')) + p.slice(p.replace(/[ ·]+$/, '').length) + name.slice(p.length) : t(name);
+};
+
 function Operations() {
   const [result,setResult]=useState(null),[settings,setSettings]=useState(null),[err,setErr]=useState(''),[busy,setBusy]=useState(false);
-  const diagnose=useCallback(async()=>{setBusy(true);setErr('');try{setResult(await api('/api/operations/diagnose',{method:'POST'}))}catch(e){setErr(e.message||'Diagnosis failed')}finally{setBusy(false)}},[]);
-  useEffect(()=>{api('/api/settings').then(x=>setSettings(x.general)).catch(e=>setErr(e.message||'Could not read diagnosis settings'))},[]);
+  const diagnose=useCallback(async()=>{setBusy(true);setErr('');try{setResult(await api('/api/operations/diagnose',{method:'POST'}))}catch(e){setErr(e.message||t('Diagnosis failed'))}finally{setBusy(false)}},[]);
+  useEffect(()=>{api('/api/settings').then(x=>setSettings(x.general)).catch(e=>setErr(e.message||t('Could not read diagnosis settings')))},[]);
   useEffect(()=>{if(!settings||!settings.diagnostics_auto)return;diagnose();const t=setInterval(diagnose,Math.max(1,settings.diagnostics_interval_minutes||60)*60000);return()=>clearInterval(t)},[settings&&settings.diagnostics_auto,settings&&settings.diagnostics_interval_minutes,diagnose]);
   const checks=(result&&result.checks)||[],passed=checks.filter(x=>x.ok).length,h=(result&&result.host)||{},hub=(result&&result.hub)||{};
   return html`<div class="operations-page diagnostic-runner">
-    <div class="card diagnostic-launch"><span class="instrument-title">System verification</span><h2>Run a complete PSGNSSB diagnosis</h2><p class="muted">Tests receiver and GNSS freshness, configuration, telemetry database, RINEX converter, NTRIP mountpoints, archive writers, local spool and network storage. When enabled, the most recent external position-integrity result is included. The storage tests create, sync and remove a small probe file.</p>
-      <button class="btn act diagnose-button" onClick=${diagnose} disabled=${busy}>${busy?'DIAGNOSING…':'DIAGNOSE'}</button>
-      ${settings?html`<span class="diagnostic-schedule">Automatic diagnosis ${settings.diagnostics_auto?'every '+settings.diagnostics_interval_minutes+' min':'is off'} · configure in Settings</span>`:null}
+    <div class="card diagnostic-launch"><span class="instrument-title">${t("System verification")}</span><h2>${t("Run a complete PSGNSSB diagnosis")}</h2><p class="muted">${t("Tests receiver and GNSS freshness, configuration, telemetry database, RINEX converter, NTRIP mountpoints, archive writers, local spool and network storage. When enabled, the most recent external position-integrity result is included. The storage tests create, sync and remove a small probe file.")}</p>
+      <button class="btn act diagnose-button" onClick=${diagnose} disabled=${busy}>${busy?t('DIAGNOSING…'):t('DIAGNOSE')}</button>
+      ${settings?html`<span class="diagnostic-schedule">${settings.diagnostics_auto?t('Automatic diagnosis every {n} min · configure in Settings',{n:settings.diagnostics_interval_minutes}):t('Automatic diagnosis is off · configure in Settings')}</span>`:null}
       ${err?html`<p class="err">${err}</p>`:null}
     </div>
-    ${result?html`<div class="card diagnostic-results"><div class="card-title"><div><h2>Diagnosis result</h2><p class="muted">Completed ${fmtDateTime(result.time)}</p></div><span class=${'pill '+(result.ok?'ok':'bad')}>${result.ok?'ALL '+passed+' TESTS PASSED':passed+' / '+checks.length+' PASSED'}</span></div>
-      <div class="diagnostic-test-list">${checks.map(c=>html`<div class=${'diagnostic-test '+(c.ok?'pass':'fail')} key=${c.name}><span class="diagnostic-test-icon">${c.ok?'✓':'!'}</span><div><b>${c.name}</b><small>${c.detail}</small></div><strong>${c.ok?'PASS':'FAIL'}</strong></div>`)}</div>
-      <div class="diagnostic-readouts">${readout('CPU',(h.cpu_percent||0).toFixed(1)+'%')}${readout('Temperature',(h.temp_c||0).toFixed(1)+' °C')}${readout('Memory free',fmtBytes((h.mem_free_mb||0)*1048576)+' / '+fmtBytes((h.mem_total_mb||0)*1048576))}${readout('Disk free',fmtBytes((h.disk_free_mb||0)*1048576)+' / '+fmtBytes((h.disk_total_mb||0)*1048576))}${readout('Valid frames',fmtNum(hub.frames||0))}${readout('Discarded bytes',fmtBytes(hub.bytes_dropped||0))}${readout('NTRIP clients',fmtNum(result.clients||0))}${readout('Rejected clients',fmtNum(result.rejected||0))}${result.ephemeris?readout('Ephemeris ready',fmtNum(result.ephemeris.ready||0)+' / '+fmtNum(result.ephemeris.satellites||0)+' sats'+(result.ephemeris.systems?' · '+Object.entries(result.ephemeris.systems).filter(([,v])=>v.satellites).map(([k,v])=>k+' '+v.ready+'/'+v.satellites).join(' · '):'')):null}</div>
-    </div>`:html`<div class="card diagnostic-empty"><p>No diagnosis has been run in this browser session.</p></div>`}
+    ${result?html`<div class="card diagnostic-results"><div class="card-title"><div><h2>${t("Diagnosis result")}</h2><p class="muted">${t('Completed {t}',{t:fmtDateTime(result.time)})}</p></div><span class=${'pill '+(result.ok?'ok':'bad')}>${result.ok?t('ALL {n} TESTS PASSED',{n:passed}):t('{p} / {n} PASSED',{p:passed,n:checks.length})}</span></div>
+      <div class="diagnostic-test-list">${checks.map(c=>html`<div class=${'diagnostic-test '+(c.ok?'pass':'fail')} key=${c.name}><span class="diagnostic-test-icon">${c.ok?'✓':'!'}</span><div><b>${checkName(c.name)}</b><small>${c.detail}</small></div><strong>${c.ok?t('PASS'):t('FAIL')}</strong></div>`)}</div>
+      <div class="diagnostic-readouts">${readout('CPU',(h.cpu_percent||0).toFixed(1)+'%')}${readout(t('Temperature'),(h.temp_c||0).toFixed(1)+' °C')}${readout(t('Memory free'),fmtBytes((h.mem_free_mb||0)*1048576)+' / '+fmtBytes((h.mem_total_mb||0)*1048576))}${readout(t('Disk free'),fmtBytes((h.disk_free_mb||0)*1048576)+' / '+fmtBytes((h.disk_total_mb||0)*1048576))}${readout(t('Valid frames'),fmtNum(hub.frames||0))}${readout(t('Discarded bytes'),fmtBytes(hub.bytes_dropped||0))}${readout(t('NTRIP clients'),fmtNum(result.clients||0))}${readout(t('Rejected clients'),fmtNum(result.rejected||0))}${result.ephemeris?readout(t('Ephemeris ready'),fmtNum(result.ephemeris.ready||0)+' / '+fmtNum(result.ephemeris.satellites||0)+' '+t('sats')+(result.ephemeris.systems?' · '+Object.entries(result.ephemeris.systems).filter(([,v])=>v.satellites).map(([k,v])=>k+' '+v.ready+'/'+v.satellites).join(' · '):'')):null}</div>
+    </div>`:html`<div class="card diagnostic-empty"><p>${t("No diagnosis has been run in this browser session.")}</p></div>`}
     <${IntegrityMonitor}/>
     <${LogViewer}/>
     <${PowerControls}/>
@@ -2426,7 +2430,7 @@ function Brand() {
   },[]);
   return html`<div class="brand" aria-label="PSGNSSB">
     <span class="brand-word">PSGNSSB</span>
-    <svg class="brand-mark" ref=${markRef} viewBox="0 0 46 28" role="img" aria-label="GNSS orbital mark">
+    <svg class="brand-mark" ref=${markRef} viewBox="0 0 46 28" role="img" aria-label=${t("GNSS orbital mark")}>
       <ellipse cx="23" cy="14" rx="18" ry="7" transform="rotate(-20 23 14)"></ellipse>
       <ellipse cx="23" cy="14" rx="18" ry="7" transform="rotate(35 23 14)"></ellipse>
       <ellipse cx="23" cy="14" rx="17" ry="6" transform="rotate(82 23 14)"></ellipse>
@@ -2442,12 +2446,15 @@ function Brand() {
   </div>`;
 }
 
+const PAGE_TITLES = { dashboard:'Dashboard', history:'Data History', files:'File download',
+                      operations:'Diagnostics', users:'Users', settings:'Settings' };
+
 function PageHelp({ tab }) {
   const rows=PAGE_HELP[tab]||[];
   return html`<div class="page-help">
-    <button class="icon-button info-button" aria-label=${'Information about '+tab} title="Page information">i</button>
-    <div class="help-popover" role="tooltip"><h2>${tab==='files'?'File download':tab==='history'?'Data history':tab==='operations'?'Diagnostics':tab}</h2>
-      <dl>${rows.map(([term,description])=>html`<div key=${term}><dt>${term}</dt><dd>${description}</dd></div>`)}</dl>
+    <button class="icon-button info-button" aria-label=${t('Information about {tab}',{tab:t(PAGE_TITLES[tab]||tab)})} title=${t("Page information")}>i</button>
+    <div class="help-popover" role="tooltip"><h2>${t(PAGE_TITLES[tab]||tab)}</h2>
+      <dl>${rows.map(([term,description])=>html`<div key=${term}><dt>${t(term)}</dt><dd>${t(description)}</dd></div>`)}</dl>
     </div>
   </div>`;
 }
@@ -2461,6 +2468,7 @@ function App() {
   const [tab, setTab] = useState('dashboard');
   const [live, setLive] = useState(null);
   const [signin, setSignin] = useState(false);
+  const [, setLangState] = useState(LANG);
   const timer = useRef(null);
 
   const check = useCallback(async () => {
@@ -2481,28 +2489,29 @@ function App() {
     return () => clearInterval(timer.current);
   }, [admin,tab,demote]);
 
-  if (admin === null) return html`<div class="wrap"><p class="muted">Loading…</p></div>`;
+  if (admin === null) return html`<div class="wrap"><p class="muted">${t("Loading…")}</p></div>`;
 
   const tabs = admin ? { ...PUBLIC_TABS, ...ADMIN_TABS } : PUBLIC_TABS;
   const shown = tabs[tab] || (admin && tab === 'settings') ? tab : 'dashboard';
   return html`
     <header>
       <${Brand}/>
-      ${live ? html`<span class="badge">${trackedSatelliteCount(live)} tracked</span>` : null}
+      ${live ? html`<span class="badge">${t('{n} tracked',{n:trackedSatelliteCount(live)})}</span>` : null}
       ${live ? html`<span class="badge">${live.ntrip_clients} NTRIP</span>` : null}
       <span class="sp"></span>
       ${live ? html`<span class="muted mono header-version">${displayVersion(live.version)}</span>` : null}
       <${PageHelp} tab=${shown}/>
+      <${LangButton} onChange=${setLangState}/>
       <${ThemeButton}/>
-      ${admin ? html`<button class=${'icon-button settings-button '+(shown==='settings'?'on':'')} title="Settings" aria-label="Settings" onClick=${()=>setTab('settings')}>
+      ${admin ? html`<button class=${'icon-button settings-button '+(shown==='settings'?'on':'')} title=${t("Settings")} aria-label=${t("Settings")} onClick=${()=>setTab('settings')}>
         <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"></circle><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.09a2 2 0 0 1 1 1.74v.5a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.38a2 2 0 0 0-.73-2.73l-.15-.09a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2Z"></path></svg>
       </button>` : null}
       ${admin
-        ? html`<button class="btn act" onClick=${async () => { await api('/api/logout', { method: 'POST' }).catch(()=>{}); demote(); }}>Sign out</button>`
-        : html`<button class="btn act" onClick=${() => setSignin(true)}>Sign in</button>`}
+        ? html`<button class="btn act" onClick=${async () => { await api('/api/logout', { method: 'POST' }).catch(()=>{}); demote(); }}>${t("Sign out")}</button>`
+        : html`<button class="btn act" onClick=${() => setSignin(true)}>${t("Sign in")}</button>`}
     </header>
     <nav>${Object.entries(tabs).map(([k, v]) => html`
-      <button key=${k} class=${shown === k ? 'on' : ''} onClick=${() => setTab(k)}>${v}</button>`)}
+      <button key=${k} class=${shown === k ? 'on' : ''} onClick=${() => setTab(k)}>${t(v)}</button>`)}
     </nav>
     <div class="wrap">
       ${shown === 'dashboard' ? html`<${Dashboard} live=${live}/>` : null}
@@ -2522,12 +2531,13 @@ class UIErrorBoundary extends React.Component {
   componentDidCatch(error, info) { console.error('PSGNSSB UI render failed', error, info); }
   render() {
     if (!this.state.error) return this.props.children;
-    return html`<div class="login"><div class="card error-card"><h2>Dashboard rendering error</h2>
+    return html`<div class="login"><div class="card error-card"><h2>${t("Dashboard rendering error")}</h2>
       <p class="err">${this.state.error.message || String(this.state.error)}</p>
-      <p class="muted">Reload to fetch the current application assets.</p>
-      <button class="btn act" onClick=${() => window.location.reload()}>Reload dashboard</button>
+      <p class="muted">${t("Reload to fetch the current application assets.")}</p>
+      <button class="btn act" onClick=${() => window.location.reload()}>${t("Reload dashboard")}</button>
     </div></div>`;
   }
 }
 
+setLang(LANG);
 ReactDOM.createRoot(document.getElementById('root')).render(html`<${UIErrorBoundary}><${App}/><//>`);

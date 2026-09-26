@@ -115,6 +115,7 @@ header .sp{flex:1}
   stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
 .page-help{position:relative}
 .info-button{font:700 var(--fs-5)/1 var(--sans);border-radius:50%}
+.lang-button{font:600 var(--fs-2)/1 var(--sans);letter-spacing:.04em}
 .help-popover{display:none;position:absolute;z-index:100;right:0;top:40px;width:min(520px,calc(100vw - 24px));
   max-height:min(72vh,680px);overflow-y:auto;padding:var(--s4);background:var(--panel);
   border:1px solid var(--line);border-radius:var(--r-surface);box-shadow:var(--shadow)}

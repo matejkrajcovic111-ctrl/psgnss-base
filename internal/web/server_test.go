@@ -13,7 +13,7 @@ import (
 
 func TestApplicationShellIsNotCached(t *testing.T) {
 	s := &Server{}
-	for _, path := range []string{"/", "/index.html", "/app.js", "/app.css"} {
+	for _, path := range []string{"/", "/index.html", "/app.js", "/app.css", "/i18n.js"} {
 		rr := httptest.NewRecorder()
 		s.securityHeaders(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {})).ServeHTTP(rr, httptest.NewRequest(http.MethodGet, path, nil))
 		if got := rr.Header().Get("Cache-Control"); !strings.Contains(got, "no-store") {
@@ -500,7 +500,7 @@ func TestDashboardShowsThePositionOnceAndDrawsTheWorkingRange(t *testing.T) {
 		"coverage=${live.coverage}", // the range comes from the live stream
 		"ring.current=L.circle(",    // and is drawn as a circle
 		"fitted.current!==rangeKM",  // the view is fitted once per radius
-		"Usable range ≈ ${rangeKM} km",
+		"Usable range ≈ {n} km",
 	} {
 		if !strings.Contains(s, want) {
 			t.Errorf("app.js is missing working-range element %q", want)
