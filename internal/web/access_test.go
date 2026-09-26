@@ -210,7 +210,7 @@ func TestPublicCaptureReadoutsCarryNoPaths(t *testing.T) {
 	if len(out) != 1 {
 		t.Fatalf("publicArchives dropped a row: %+v", out)
 	}
-	for _, hidden := range []string{"dest", "file", "failures", "synced", "last_sync"} {
+	for _, hidden := range []string{"dest", "file", "failures", "synced", "last_sync", "last_failure", "last_error", "pending"} {
 		if _, ok := out[0][hidden]; ok {
 			t.Errorf("%q is exposed to anonymous callers", hidden)
 		}

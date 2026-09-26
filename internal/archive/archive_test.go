@@ -446,3 +446,90 @@ func TestFlushPendingSkipsInProgressFile(t *testing.T) {
 	}
 	w2.Finish()
 }
+
+// A soft SMB mount can time out after part of an append has landed. Resending
+// the range from the recorded offset put those bytes on the share twice; the
+// next sync has to continue from what the share really holds.
+func TestSyncAfterPartialAppendDoesNotDuplicate(t *testing.T) {
+	spool, dest := t.TempDir(), t.TempDir()
+	at := time.Date(2026, 9, 15, 12, 0, 0, 0, time.UTC)
+	w, _ := NewWriter("t", spool, dest, "Base1_%Y%m%d%h00", 24, 0, nil)
+	w.Write([]byte("AAAA"), at)
+	w.syncToDest()
+
+	// Half of the next append reaches the share, and the writer never hears.
+	w.Write([]byte("BBBB"), at)
+	f, _ := os.OpenFile(w.curDest, os.O_WRONLY|os.O_APPEND, 0)
+	f.Write([]byte("BB"))
+	f.Close()
+
+	w.syncToDest()
+	w.Write([]byte("CC"), at)
+	w.Finish()
+
+	b, _ := os.ReadFile(filepath.Join(dest, "Base1_202609150000"))
+	if string(b) != "AAAABBBBCC" {
+		t.Errorf("share has %q, want AAAABBBBCC", b)
+	}
+	if e, _ := os.ReadDir(spool); len(e) != 0 {
+		t.Errorf("spool should be empty after a clean finish, has %d entries", len(e))
+	}
+}
+
+// A file whose period ended without being finished on the share -- the final
+// sync failed, or the station was down over the swap -- still has its sidecar.
+// It used to be skipped as "in progress" forever. The next sweep finishes it
+// at the destination it was already feeding.
+func TestFlushPendingFinishesAnEndedFile(t *testing.T) {
+	spool, dest := t.TempDir(), t.TempDir()
+	day1 := time.Date(2026, 9, 15, 12, 0, 0, 0, time.UTC)
+
+	w1, _ := NewWriter("t", spool, dest, "Base1_%Y%m%d%h00", 24, 0, nil)
+	w1.Write([]byte("AAAA"), day1)
+	w1.syncToDest()
+	w1.Write([]byte("BBBB"), day1)
+	w1.Close() // shutdown; it stays down past midnight
+	first := filepath.Join(dest, "Base1_202609150000")
+	os.Truncate(first, 2) // and the share lost the tail of what it had
+
+	w2, _ := NewWriter("t", spool, dest, "Base1_%Y%m%d%h00", 24, 0, nil)
+	if err := w2.open(day1.Add(24 * time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	w2.FlushPending()
+
+	if b, _ := os.ReadFile(first); string(b) != "AAAABBBB" {
+		t.Errorf("yesterday's share file has %q, want AAAABBBB", b)
+	}
+	if _, err := os.Stat(filepath.Join(spool, "Base1_202609150000")); !os.IsNotExist(err) {
+		t.Error("yesterday's spool copy is still there after it reached the share")
+	}
+	if w2.Pending.Load() != 0 {
+		t.Errorf("Pending = %d, want 0", w2.Pending.Load())
+	}
+	w2.Close()
+}
+
+// While a finished file cannot reach the share, it is counted as pending and
+// the failure is recorded with its reason.
+func TestPendingAndLastErrorWhileShareIsGone(t *testing.T) {
+	spool, parent := t.TempDir(), t.TempDir()
+	dest := filepath.Join(parent, "share")
+	day1 := time.Date(2026, 9, 15, 12, 0, 0, 0, time.UTC)
+
+	w1, _ := NewWriter("t", spool, dest, "Base1_%Y%m%d%h00", 24, 0, nil)
+	w1.Write([]byte("AAAA"), day1)
+	w1.Close()
+	os.RemoveAll(dest)
+	os.WriteFile(dest, nil, 0o600) // a file where the directory was: MkdirAll fails
+
+	w2, _ := NewWriter("t", spool, dest, "Base1_%Y%m%d%h00", 24, 0, nil)
+	w2.open(day1.Add(24 * time.Hour))
+	w2.FlushPending()
+	st := w2.Snapshot()
+	if st.Pending != 1 || st.LastFailure == 0 || st.LastError == "" {
+		t.Errorf("snapshot = pending %d, last failure %d, error %q; want 1, set, set",
+			st.Pending, st.LastFailure, st.LastError)
+	}
+	w2.Close()
+}

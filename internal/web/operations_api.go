@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/psgnss/psgnss-base/internal/archive"
 	"github.com/psgnss/psgnss-base/internal/hostinfo"
 	"github.com/psgnss/psgnss-base/internal/store"
 )
@@ -134,18 +135,7 @@ func (s *Server) handleOperationsHealth(w http.ResponseWriter, r *http.Request) 
 	}
 	archives := s.archiveStats()
 	for _, a := range archives {
-		at := time.Unix(a.LastSync, 0)
-		recent := a.LastSync > 0 && now.Sub(at) < 3*time.Duration(max(1, s.Cfg.Archive.SyncEverySec))*time.Second
-		// A writer begins recording immediately, while its first periodic share
-		// sync has not happened yet. The separate network-archive write probe
-		// verifies destination access during this short post-start window.
-		resumed := a.LastSync == 0 && a.Bytes > 0
-		ok := a.Failures == 0 && (recent || resumed)
-		detail := a.File + " · " + strconv.FormatInt(a.Failures, 10) + " sync failure(s)"
-		if resumed {
-			detail += " · first post-restart sync pending"
-			at = now
-		}
+		ok, detail, at := archiveCheck(a, now, s.Cfg.Archive.SyncEverySec)
 		add("Archive "+a.Name, ok, detail, at)
 	}
 	smb := mountState(s.Cfg.Archive.MountPoint)
@@ -327,4 +317,38 @@ func max(a, b int) int {
 		return a
 	}
 	return b
+}
+
+// archiveCheck judges one archive writer for the health list.
+func archiveCheck(a archive.Stats, now time.Time, syncEverySec int) (bool, string, time.Time) {
+	at := time.Unix(a.LastSync, 0)
+	recent := a.LastSync > 0 && now.Sub(at) < 3*time.Duration(max(1, syncEverySec))*time.Second
+	// A writer begins recording immediately, while its first periodic share
+	// sync has not happened yet. The separate network-archive write probe
+	// verifies destination access during this short post-start window.
+	resumed := a.LastSync == 0 && a.Bytes > 0
+	// Failures is a count since start, so it cannot say whether anything
+	// is wrong now: one soft-mount timeout used to hold this check red for
+	// days after every sync since had succeeded. It fails while the latest
+	// failure is newer than the latest sync, or a finished file is still
+	// waiting in the spool.
+	recovered := a.LastFailure == 0 || a.LastSync > a.LastFailure
+	ok := recovered && a.Pending == 0 && (recent || resumed)
+	detail := a.File + " · " + strconv.FormatInt(a.Failures, 10) + " sync failure(s) since start"
+	if a.LastFailure > 0 {
+		detail += " · last " + time.Unix(a.LastFailure, 0).UTC().Format("2006-01-02 15:04Z")
+		if recovered {
+			detail += ", recovered"
+		} else if a.LastError != "" {
+			detail += ": " + a.LastError
+		}
+	}
+	if a.Pending > 0 {
+		detail += " · " + strconv.FormatInt(a.Pending, 10) + " finished file(s) waiting in the spool"
+	}
+	if resumed {
+		detail += " · first post-restart sync pending"
+		at = now
+	}
+	return ok, detail, at
 }

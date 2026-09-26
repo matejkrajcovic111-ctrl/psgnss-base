@@ -3,6 +3,7 @@ package archive
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -46,6 +47,21 @@ type Writer struct {
 	FlushFailed  atomic.Int64
 	SyncedBytes  atomic.Int64
 	LastSyncUnix atomic.Int64
+	// LastFailUnix and lastErr describe the most recent failure, so a
+	// diagnostic can tell a problem that is still happening from one the
+	// writer has since recovered from. FlushFailed alone only ever grows.
+	LastFailUnix atomic.Int64
+	lastErr      atomic.Pointer[string]
+	// Pending counts completed files still in the spool, as of the last sweep.
+	Pending atomic.Int64
+}
+
+// noteFailure records a failed write to the share.
+func (w *Writer) noteFailure(err error) {
+	msg := err.Error()
+	w.FlushFailed.Add(1)
+	w.LastFailUnix.Store(time.Now().Unix())
+	w.lastErr.Store(&msg)
 }
 
 // SyncInterval is how often the growing file is appended to the share.
@@ -134,7 +150,7 @@ func (w *Writer) open(now time.Time) error {
 	w.curDest, w.synced = "", 0
 	if w.DestDir != "" {
 		if err := os.MkdirAll(w.DestDir, 0o750); err != nil {
-			w.FlushFailed.Add(1)
+			w.noteFailure(err)
 			w.Log.Error("archive destination unavailable; data stays in the spool",
 				"archive", w.Name, "dest", w.DestDir, "err", err)
 		} else if dest, off, ok := w.loadState(name); ok {
@@ -233,25 +249,64 @@ func (w *Writer) syncToDest() {
 			return
 		}
 	}
-	src := filepath.Join(w.SpoolDir, w.curName)
-	fi, err := os.Stat(src)
-	if err != nil || fi.Size() <= w.synced {
-		return
-	}
-	n, err := appendRange(src, w.curDest, w.synced, fi.Size())
+	synced, err := w.topUp(w.curName, w.curDest, w.synced)
 	if err != nil {
-		w.FlushFailed.Add(1)
+		w.noteFailure(err)
 		w.Log.Warn("archive sync to share failed; data is still in the spool",
 			"archive", w.Name, "file", w.curName, "err", err)
 		return
 	}
-	w.synced += n
-	w.SyncedBytes.Add(n)
+	if synced > w.synced {
+		w.SyncedBytes.Add(synced - w.synced)
+	}
+	w.synced = synced
 	w.LastSyncUnix.Store(time.Now().Unix())
 	w.saveState(w.curName)
 }
 
+// topUp brings the share copy of a spool file up to the spool's length and
+// returns the new sync point.
+//
+// It continues from the share file's actual length, not from recorded. The
+// share is a soft SMB mount: a write that times out may still have landed in
+// part, and appending the same range again from the recorded offset put a
+// duplicated run of bytes in the middle of the day's file. Starting from what
+// is really there heals both that and a write that was lost.
+func (w *Writer) topUp(name, dest string, recorded int64) (int64, error) {
+	src := filepath.Join(w.SpoolDir, name)
+	fi, err := os.Stat(src)
+	if err != nil {
+		return recorded, err
+	}
+	var have int64
+	if di, err := os.Stat(dest); err == nil {
+		have = di.Size()
+	} else if !os.IsNotExist(err) {
+		return recorded, err
+	}
+	if have > fi.Size() {
+		return recorded, fmt.Errorf("share copy %s is %d bytes, longer than the %d in the spool",
+			filepath.Base(dest), have, fi.Size())
+	}
+	if have != recorded {
+		w.Log.Warn("share copy differs from the recorded sync point; continuing from the share",
+			"archive", w.Name, "file", name, "recorded", recorded, "share", have)
+	}
+	if have == fi.Size() {
+		return have, nil
+	}
+	n, err := appendRange(src, dest, have, fi.Size())
+	if err != nil {
+		return recorded, err
+	}
+	return have + n, nil
+}
+
 // appendRange copies src[from:to] onto the end of dst.
+//
+// The copy is synced and the close checked because CIFS can report a failed
+// write-back only there; ignoring it counted bytes as on the share that were
+// not.
 func appendRange(src, dst string, from, to int64) (int64, error) {
 	in, err := os.Open(src)
 	if err != nil {
@@ -265,12 +320,17 @@ func appendRange(src, dst string, from, to int64) (int64, error) {
 	if err != nil {
 		return 0, err
 	}
-	defer out.Close()
 	n, err := io.CopyN(out, in, to-from)
-	if err != nil && err != io.EOF {
-		return n, err
+	if err == io.EOF {
+		err = nil
 	}
-	return n, nil
+	if err == nil {
+		err = out.Sync()
+	}
+	if closeErr := out.Close(); err == nil {
+		err = closeErr
+	}
+	return n, err
 }
 
 func (w *Writer) rotate(now time.Time) error {
@@ -311,27 +371,46 @@ func (w *Writer) closeCurrent(complete bool) error {
 		return nil
 	}
 
-	src := filepath.Join(w.SpoolDir, name)
 	if dest == "" {
 		w.Log.Warn("archive file complete but never reached the share; kept in spool",
 			"archive", w.Name, "file", name)
 		return nil
 	}
-	// Only drop the spool copy once the share copy is the same size.
-	sfi, err1 := os.Stat(src)
-	dfi, err2 := os.Stat(dest)
-	if err1 == nil && err2 == nil && dfi.Size() == sfi.Size() && sfi.Size() == synced {
-		w.clearState(name)
-		if err := os.Remove(src); err != nil {
-			w.Log.Warn("could not remove spooled file after sync", "archive", w.Name, "file", name, "err", err)
-		}
-		w.Log.Info("archive file complete on the share",
-			"archive", w.Name, "file", filepath.Base(dest), "bytes", dfi.Size())
-	} else {
-		w.Log.Warn("share copy does not match the spool; keeping the spool copy",
-			"archive", w.Name, "file", name)
-	}
+	w.finishOnShare(name, dest, synced)
 	return nil
+}
+
+// finishOnShare completes a file whose period has ended: it tops the share
+// copy up and drops the spool copy once the two are the same size. On failure
+// the spool copy and its state stay, and FlushPending tries again.
+func (w *Writer) finishOnShare(name, dest string, recorded int64) bool {
+	src := filepath.Join(w.SpoolDir, name)
+	synced, err := w.topUp(name, dest, recorded)
+	if err == nil {
+		sfi, err1 := os.Stat(src)
+		dfi, err2 := os.Stat(dest)
+		switch {
+		case err1 != nil:
+			err = err1
+		case err2 != nil:
+			err = err2
+		case dfi.Size() != sfi.Size() || sfi.Size() != synced:
+			err = fmt.Errorf("share copy is %d bytes, spool copy %d", dfi.Size(), sfi.Size())
+		}
+	}
+	if err != nil {
+		w.noteFailure(err)
+		w.Log.Warn("share copy does not match the spool; keeping the spool copy",
+			"archive", w.Name, "file", name, "err", err)
+		return false
+	}
+	w.clearState(name)
+	if err := os.Remove(src); err != nil {
+		w.Log.Warn("could not remove spooled file after sync", "archive", w.Name, "file", name, "err", err)
+	}
+	w.Log.Info("archive file complete on the share",
+		"archive", w.Name, "file", filepath.Base(dest), "bytes", synced)
+	return true
 }
 
 // flushToDest moves a completed spool file to the share. Failure leaves the
@@ -343,7 +422,7 @@ func (w *Writer) flushToDest(name string) {
 	src := filepath.Join(w.SpoolDir, name)
 	dst := filepath.Join(w.DestDir, name)
 	if err := os.MkdirAll(w.DestDir, 0o750); err != nil {
-		w.FlushFailed.Add(1)
+		w.noteFailure(err)
 		w.Log.Error("archive destination unavailable, file kept in spool",
 			"archive", w.Name, "file", name, "err", err)
 		return
@@ -366,7 +445,7 @@ func (w *Writer) flushToDest(name string) {
 			}
 		}
 		if alt == "" {
-			w.FlushFailed.Add(1)
+			w.noteFailure(errors.New("destination exists and no free alternate name"))
 			w.Log.Error("archive destination exists and no free alternate name; file kept in spool",
 				"archive", w.Name, "file", name)
 			return
@@ -376,7 +455,7 @@ func (w *Writer) flushToDest(name string) {
 		dst = alt
 	}
 	if err := copyFile(src, dst); err != nil {
-		w.FlushFailed.Add(1)
+		w.noteFailure(err)
 		w.Log.Error("archive flush to share failed, file kept in spool",
 			"archive", w.Name, "file", name, "err", err)
 		return
@@ -388,12 +467,18 @@ func (w *Writer) flushToDest(name string) {
 	w.Log.Info("archive file flushed to share", "archive", w.Name, "file", name)
 }
 
-// FlushPending copies completed spool files that never reached the share.
+// FlushPending moves completed spool files to the share.
 //
-// It deliberately skips any file that still has a destination sidecar: that
-// marks an in-progress file the writer will resume. Without this check, a
-// restart would see the file it is about to reopen, treat it as a stranded
-// orphan, and copy it to a fresh name -- fragmenting the day on every restart.
+// It never touches the file being written, and it must run after open: a
+// restart that swept first would see the file it is about to reopen, treat it
+// as a stranded orphan, and copy it to a fresh name -- fragmenting the day on
+// every restart.
+//
+// Any other file with a destination sidecar belongs to a period that has
+// ended without being finished on the share: its final sync failed, or the
+// station was down across the swap. It is topped up at the destination it was
+// already feeding. These used to be skipped as "in progress", which left them
+// in the spool for good.
 func (w *Writer) FlushPending() {
 	if w.DestDir == "" {
 		return
@@ -402,16 +487,31 @@ func (w *Writer) FlushPending() {
 	if err != nil {
 		return
 	}
+	var pending int64
 	for _, e := range entries {
 		name := e.Name()
 		if e.IsDir() || name == w.curName || strings.HasPrefix(name, ".") {
 			continue
 		}
 		if _, err := os.Stat(w.statePath(name)); err == nil {
-			continue // in progress; the writer owns it
+			if w.curName == "" {
+				pending++ // no open file, so this may be the one to resume
+				continue
+			}
+			if dest, synced, ok := w.loadState(name); ok {
+				if !w.finishOnShare(name, dest, synced) {
+					pending++
+				}
+				continue
+			}
+			w.clearState(name) // points outside the configured share
 		}
 		w.flushToDest(name)
+		if _, err := os.Stat(filepath.Join(w.SpoolDir, name)); err == nil {
+			pending++
+		}
 	}
+	w.Pending.Store(pending)
 }
 
 // Stats is a live snapshot of one archive, for the dashboard.
@@ -425,6 +525,11 @@ type Stats struct {
 	StartSec  int64  `json:"start"`
 	LastSync  int64  `json:"last_sync"`
 	Failures  int64  `json:"failures"`
+	// LastFailure and LastError describe the most recent failure; Pending is
+	// the number of completed files still waiting in the spool.
+	LastFailure int64  `json:"last_failure"`
+	LastError   string `json:"last_error"`
+	Pending     int64  `json:"pending"`
 }
 
 // Snapshot reports the current file's progress.
@@ -436,6 +541,12 @@ func (w *Writer) Snapshot() Stats {
 		Synced:   w.SyncedBytes.Load(),
 		LastSync: w.LastSyncUnix.Load(),
 		Failures: w.FlushFailed.Load(),
+
+		LastFailure: w.LastFailUnix.Load(),
+		Pending:     w.Pending.Load(),
+	}
+	if msg := w.lastErr.Load(); msg != nil {
+		st.LastError = *msg
 	}
 	if w.curDest != "" {
 		st.Dest = filepath.Base(w.curDest)
