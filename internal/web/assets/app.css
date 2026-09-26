@@ -259,6 +259,10 @@ svg{display:block;max-width:100%}
    Leaflet drew a 0px-high map with its tiles loaded. Basis auto lets the
    height the panel sets actually apply. */
 .map-host{width:100%;flex:1 1 auto;min-height:0;background:var(--panel2)}
+/* Leaflet stacks its panes at z-index 400 and its controls at 800-1000, which
+   drew the map over the page help popover. isolation keeps those numbers
+   inside the map instead of competing with the rest of the page. */
+.map-host{isolation:isolate}
 .map-range{display:flex;align-items:baseline;justify-content:center;flex-wrap:wrap;gap:var(--s2);padding:var(--s2) var(--s2) 0;text-align:center}.map-range b{font-size:var(--fs-3);color:var(--range);}.map-range span{font-size:var(--fs-1)}
 .map-readout{padding-top:var(--s1);text-align:center;font-size:var(--fs-1)}
 .map-note{margin:var(--s3)}
