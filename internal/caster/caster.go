@@ -58,16 +58,26 @@ type Mount struct {
 	LastData atomic.Int64 // Unix milliseconds
 }
 
+// A client's queue is never closed. Broadcasts send to it under the mount's
+// read lock while the client may be dropping at the same moment, and a send on
+// a closed channel panics the whole caster. Dropping closes gone instead, which
+// the writer watches alongside the queue.
 type client struct {
 	conn  net.Conn
 	ch    chan []byte
+	gone  chan struct{}
 	once  sync.Once
+	slow  atomic.Bool
 	sent  atomic.Int64
 	rowID int64
 	user  string
 }
 
-func (c *client) close() { c.once.Do(func() { close(c.ch); c.conn.Close() }) }
+func newClient(conn net.Conn, queue int) *client {
+	return &client{conn: conn, ch: make(chan []byte, queue), gone: make(chan struct{})}
+}
+
+func (c *client) close() { c.once.Do(func() { close(c.gone); c.conn.Close() }) }
 
 // Options configures a Caster.
 type Options struct {
@@ -282,7 +292,9 @@ func (m *Mount) broadcast(b []byte) {
 		select {
 		case cl.ch <- b:
 		default:
-			go cl.close() // too slow; drop it rather than stall the mountpoint
+			// Too slow; drop it rather than stall the mountpoint.
+			cl.slow.Store(true)
+			cl.close()
 		}
 	}
 	for t := range m.taps {
@@ -501,7 +513,8 @@ func (c *Caster) handleGet(ctx context.Context, conn net.Conn, br *bufio.Reader,
 	c.log.Info("client connected", "user", u.Username, "mount", mountName,
 		"ip", ip, "via_proxy", viaProxy, "ntrip", req.NtripVersion)
 
-	cl := &client{conn: conn, ch: make(chan []byte, 512), rowID: rowID, user: u.Username}
+	cl := newClient(conn, 512)
+	cl.rowID, cl.user = rowID, u.Username
 	m.mu.Lock()
 	m.clients[cl] = struct{}{}
 	m.mu.Unlock()
@@ -534,13 +547,25 @@ func (c *Caster) handleGet(ctx context.Context, conn net.Conn, br *bufio.Reader,
 		}
 	}()
 
-	for b := range cl.ch {
-		conn.SetWriteDeadline(time.Now().Add(30 * time.Second))
-		n, err := conn.Write(b)
-		cl.sent.Add(int64(n))
-		if err != nil {
-			reason = "write error: " + err.Error()
-			break
+write:
+	for {
+		select {
+		case <-cl.gone:
+			if cl.slow.Load() {
+				reason = "dropped: too slow to keep up"
+			}
+			break write
+		case b := <-cl.ch:
+			conn.SetWriteDeadline(time.Now().Add(30 * time.Second))
+			n, err := conn.Write(b)
+			cl.sent.Add(int64(n))
+			if err != nil {
+				reason = "write error: " + err.Error()
+				if cl.slow.Load() {
+					reason = "dropped: too slow to keep up"
+				}
+				break write
+			}
 		}
 	}
 
