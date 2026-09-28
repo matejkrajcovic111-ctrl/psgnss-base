@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+- The interface is available in Slovak, switched from a button in the header.
+  Messages written by the daemon itself stay English.
+- Archive sync heals a partial write on a soft SMB mount instead of appending
+  the same range twice, finishes files left in the spool when the last sync
+  failed or the station was down across the daily swap, and the Diagnostics
+  check reports current sync health rather than the lifetime failure count.
+- The base-position map no longer draws over the page help popover.
+- A failed RINEX conversion is now written to the log with its reason.
+
 ## 1.0.0
 
 First public release. The station this was built for has been running in

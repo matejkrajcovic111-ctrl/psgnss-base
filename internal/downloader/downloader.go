@@ -544,7 +544,11 @@ func (d *Downloader) Process(ctx context.Context, dateStr string, job *Job,
 		// convbin writes its normal banner to stderr, so surfacing that as the
 		// error tells the operator nothing. The common real cause is a window
 		// the file does not cover -- a day whose recording started late or
-		// stopped early.
+		// stopped early. What convbin did say still goes to the log, for the
+		// case where the cause is something else.
+		if len(errs) > 0 {
+			d.o.Log.Debug("convbin produced nothing", "date", dateStr, "stderr", strings.Join(errs, "; "))
+		}
 		if !win.IsFullDay() {
 			return nil, fmt.Errorf("no data between %s UTC on %s; "+
 				"that day's recording may not cover the whole window",

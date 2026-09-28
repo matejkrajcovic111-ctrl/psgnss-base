@@ -57,12 +57,14 @@ Leaflet is a separate work with its own licence, vendored unmodified at
 `internal/web/assets/leaflet-1.9.4.js` and `.css`. Its BSD-2-Clause notice is in
 the file header and must stay there.
 
-Three more browser works are vendored unmodified for the same reason -- the Pi
+Five more browser works are vendored unmodified for the same reason -- the Pi
 has no internet and the tunnel should not make a visitor wait on a CDN. Each
 keeps its own licence and its own notice:
 
 | Work | Files | Licence |
 |---|---|---|
+| [React](https://react.dev) 18.3.1, © Meta Platforms, Inc. and affiliates | `react.js`, `react-dom.js` (UMD production builds) | MIT |
+| [htm](https://github.com/developit/htm), © Jason Miller | `htm.js` (UMD build) | Apache-2.0 |
 | [uPlot](https://github.com/leeoniya/uPlot) 1.6.32, © Leon Sorokin | `uplot-1.6.32.min.js`, `.css` | MIT |
 | [Tabler](https://github.com/tabler/tabler) 1.4.0, © The Tabler Authors, Paweł Kuna | `tabler-1.4.0.min.css` | MIT |
 | [Inter](https://github.com/rsms/inter), © The Inter Project Authors | `inter-400/500/600/700.woff2` (latin subset) | SIL Open Font License 1.1 |

@@ -202,6 +202,10 @@ func (d *Downloader) StartJob(owner, dateStr string, out Outputs, win Window, pr
 				return
 			}
 			job.State, job.Error, job.Percent = "error", err.Error(), 0
+			// The request is logged when it starts; without this the journal
+			// shows a conversion asked for and never says what became of it.
+			d.o.Log.Warn("RINEX conversion failed", "date", dateStr, "window", label,
+				"preset", preset.ID, "err", err)
 			return
 		}
 		job.State, job.Percent, job.Stage = "done", 1, "complete"
