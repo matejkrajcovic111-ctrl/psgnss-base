@@ -223,22 +223,39 @@ var (
 	// data set, so a rover never waits longer for a synthesised orbit than for
 	// a real one.
 	ephemerisTypes = []int{1019, 1042, 1046}
+
+	// A UM980 tracks GLONASS, so its mountpoints carry it, together with the
+	// GLONASS code-phase biases (1230) many rovers need to fix with GLONASS.
+	// Its ephemeris is the receiver's own, GLONASS 1020 included, forwarded
+	// rather than synthesised.
+	unicoreMSM7Types      = []int{1077, 1087, 1097, 1127}
+	unicoreMSM4Types      = []int{1074, 1084, 1094, 1124}
+	unicoreEphemerisTypes = []int{1019, 1020, 1042, 1046}
 )
 
-func messagesFor(msm []int, ephemeris bool) []config.MessageSel {
-	out := make([]config.MessageSel, 0, len(stationTypes)+len(msm)+len(ephemerisTypes))
+// BaudFor is the serial rate a board ships configured for: the X20P's USB
+// port runs at 460800, the simpleRTK3B's FTDI bridge to UM980 COM1 at 115200.
+func BaudFor(profileID string) int {
+	if p, ok := boardprofile.Lookup(profileID); ok && p.Unicore() {
+		return 115200
+	}
+	return 460800
+}
+
+func messagesFor(msm, eph []int, ephemeris bool, extra ...config.MessageSel) []config.MessageSel {
+	out := make([]config.MessageSel, 0, len(stationTypes)+len(msm)+len(eph)+len(extra))
 	for _, t := range stationTypes {
 		out = append(out, config.MessageSel{Type: t, Interval: 10})
 	}
 	if ephemeris {
-		for _, t := range ephemerisTypes {
+		for _, t := range eph {
 			out = append(out, config.MessageSel{Type: t, Interval: 30})
 		}
 	}
 	for _, t := range msm {
 		out = append(out, config.MessageSel{Type: t, Interval: 1})
 	}
-	return out
+	return append(out, extra...)
 }
 
 // BuildConfig turns answers into the configuration the daemon will load. It
@@ -250,11 +267,18 @@ func BuildConfig(a Answers, paths Paths) (*config.Config, error) {
 	}
 	profile, _ := boardprofile.Lookup(a.ProfileID)
 
-	// GLONASS is absent deliberately: this receiver family's firmware reports
+	// GLONASS is absent on the X20P deliberately: its firmware reports
 	// GPS;GAL;BDS / SBAS;QZSS / NAVIC and emits nothing on 1084/1087 even with
 	// them enabled. Advertising a constellation the stream does not carry is
-	// worse than not advertising it.
-	const navSystem = "GPS+GAL+BDS"
+	// worse than not advertising it. The UM980 tracks it.
+	navSystem := "GPS+GAL+BDS"
+	msm7, msm4, eph := msm7Types, msm4Types, ephemerisTypes
+	var extra []config.MessageSel
+	if profile.Unicore() {
+		navSystem = "GPS+GLO+GAL+BDS"
+		msm7, msm4, eph = unicoreMSM7Types, unicoreMSM4Types, unicoreEphemerisTypes
+		extra = []config.MessageSel{{Type: 1230, Interval: 10}}
+	}
 
 	c := &config.Config{
 		Station: config.Station{
@@ -268,7 +292,8 @@ func BuildConfig(a Answers, paths Paths) (*config.Config, error) {
 			Baud:          a.Baud,
 			Profile:       profile.ID,
 			Model:         profile.Receiver,
-			VerifyModel:   true,
+			// The model check is a UBX MON-VER read.
+			VerifyModel:   profile.UBX(),
 			RevertTimeout: 60,
 		},
 		Hub: config.Hub{
@@ -296,9 +321,9 @@ func BuildConfig(a Answers, paths Paths) (*config.Config, error) {
 			Carrier:      3,
 			Mountpoint: []config.Mountpoint{
 				{Name: a.MSM7Name, SourceID: 1, NavSystem: navSystem,
-					Messages: messagesFor(msm7Types, a.Ephemeris)},
+					Messages: messagesFor(msm7, eph, a.Ephemeris, extra...)},
 				{Name: a.MSM4Name, SourceID: 2, NavSystem: navSystem,
-					Messages: messagesFor(msm4Types, a.Ephemeris)},
+					Messages: messagesFor(msm4, eph, a.Ephemeris, extra...)},
 			},
 		},
 		Archive: config.Archive{
@@ -354,6 +379,12 @@ func BuildConfig(a Answers, paths Paths) (*config.Config, error) {
 		// Nothing to flush to, so the archive stays in the spool. The writer
 		// treats an empty mount point as local-only.
 		c.Archive.MountPoint = ""
+	}
+	if profile.Unicore() {
+		// No UBX to record: RINEX comes from the RTCM archive, which carries
+		// the MSM7 observations and the receiver's own ephemeris together.
+		c.Archive.Nav.Enabled = false
+		c.RINEX.RawFormat = "rtcm3"
 	}
 	if err := c.Validate(); err != nil {
 		return nil, fmt.Errorf("the answers produce a configuration this daemon would refuse: %w", err)

@@ -93,12 +93,53 @@ func TestGeneratedConfigIsOneTheDaemonAccepts(t *testing.T) {
 	if loaded.RINEX.Frequencies != 4 {
 		t.Errorf("rinex.frequencies = %d, want 4", loaded.RINEX.Frequencies)
 	}
-	// GLONASS is not supported by this receiver's firmware; advertising it
+	// GLONASS is not supported by the X20P's firmware; advertising it
 	// would promise a constellation the stream does not carry.
 	for _, m := range loaded.Caster.Mountpoint {
 		if strings.Contains(m.NavSystem, "GLO") {
 			t.Errorf("mountpoint %q advertises %q", m.Name, m.NavSystem)
 		}
+	}
+}
+
+// A UM980 tracks GLONASS and emits its own ephemeris and no UBX, so its
+// station serves four constellations, forwards the receiver's ephemeris
+// including GLONASS 1020 and the 1230 biases, and keeps no UBX nav archive.
+func TestUM980StationServesGLONASSAndNativeEphemeris(t *testing.T) {
+	a := good()
+	a.ProfileID = "simplertk3b-budget"
+	a.Device = "/dev/serial/by-id/usb-FTDI_FT230X_Basic_UART_X-if00-port0"
+	a.Baud = BaudFor(a.ProfileID)
+	cfg, err := BuildConfig(a, DefaultPaths())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Receiver.Model != "UM980" || cfg.Receiver.Baud != 115200 || cfg.Receiver.VerifyModel {
+		t.Errorf("receiver = %+v", cfg.Receiver)
+	}
+	want := map[string][]int{
+		"Example_MSM7": {1077, 1087, 1097, 1127, 1019, 1020, 1042, 1046, 1230, 1006},
+		"Example_MSM4": {1074, 1084, 1094, 1124, 1019, 1020, 1042, 1046, 1230, 1006},
+	}
+	for _, m := range cfg.Caster.Mountpoint {
+		if m.NavSystem != "GPS+GLO+GAL+BDS" {
+			t.Errorf("%s advertises %q", m.Name, m.NavSystem)
+		}
+		got := map[int]bool{}
+		for _, msg := range m.Messages {
+			got[msg.Type] = true
+		}
+		for _, typ := range want[m.Name] {
+			if !got[typ] {
+				t.Errorf("%s does not carry %d", m.Name, typ)
+			}
+		}
+	}
+	if cfg.Archive.Nav.Enabled {
+		t.Error("a UM980 station records a UBX nav archive that will stay empty")
+	}
+	if BaudFor("simplertk4-optimum") != 460800 {
+		t.Error("the X20P default baud changed")
 	}
 }
 

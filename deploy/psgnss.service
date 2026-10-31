@@ -42,8 +42,10 @@ RestrictNamespaces=yes
 RestrictSUIDSGID=yes
 LockPersonality=yes
 MemoryDenyWriteExecute=yes
-# Serial port access.
+# Serial port access: u-blox USB enumerates as ttyACM, the UM980 board's FTDI
+# bridge as ttyUSB. Without the second line a UM980 cannot be opened at all.
 DeviceAllow=char-ttyACM rw
+DeviceAllow=char-ttyUSB rw
 SupplementaryGroups=dialout
 
 [Install]

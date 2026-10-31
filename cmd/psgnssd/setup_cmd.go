@@ -69,6 +69,7 @@ func runSetup(root string, dryRun, force, assumeYes bool) error {
 		}
 		break
 	}
+	a.Baud = setup.BaudFor(a.ProfileID)
 
 	devices := setup.FindSerialDevices(root)
 	if len(devices) == 0 {
@@ -115,9 +116,14 @@ func runSetup(root string, dryRun, force, assumeYes bool) error {
 	fmt.Println()
 	fmt.Println("Reference station ID is broadcast in every message. It must match what the")
 	fmt.Println("receiver stamps into its own observations: when the two disagree a rover")
-	fmt.Println("receives a healthy-looking stream, tracks satellites and never fixes. This")
-	fmt.Println("receiver family stamps 0 out of the box, so 0 is the answer unless you are")
-	fmt.Println("also writing CFG-RTCM DF003 on the receiver.")
+	fmt.Println("receives a healthy-looking stream, tracks satellites and never fixes.")
+	if p, _ := boardprofile.Lookup(a.ProfileID); p.Unicore() {
+		fmt.Println("A UM980 stamps the ID set by its MODE BASE command; send `MODE` to the")
+		fmt.Println("receiver to see it, and answer with that number.")
+	} else {
+		fmt.Println("This receiver family stamps 0 out of the box, so 0 is the answer unless you")
+		fmt.Println("are also writing CFG-RTCM DF003 on the receiver.")
+	}
 	a.StationID = uint16(askInt(in, "Station ID", int(a.StationID)))
 	a.Antenna = ask(in, "Antenna descriptor (RTCM 1008)", a.Antenna)
 
@@ -134,9 +140,15 @@ func runSetup(root string, dryRun, force, assumeYes bool) error {
 	a.MSM7Name = ask(in, "MSM7 mountpoint (full resolution)", a.MSM7Name)
 	a.MSM4Name = ask(in, "MSM4 mountpoint (compact)", a.MSM4Name)
 	fmt.Println()
-	fmt.Println("This receiver cannot emit RTCM ephemeris, so PSGNSS can synthesise 1019,")
-	fmt.Println("1042 and 1046 from the raw navigation subframes. A rover that already holds")
-	fmt.Println("an ephemeris ignores them; one that does not starts faster. About 0.5 kbit/s.")
+	if p, _ := boardprofile.Lookup(a.ProfileID); p.NativeEphemeris {
+		fmt.Println("The receiver emits RTCM ephemeris itself (1019, 1020, 1042, 1046); PSGNSS can")
+		fmt.Println("forward it on the mountpoints.")
+	} else {
+		fmt.Println("This receiver cannot emit RTCM ephemeris, so PSGNSS can synthesise 1019,")
+		fmt.Println("1042 and 1046 from the raw navigation subframes.")
+	}
+	fmt.Println("A rover that already holds an ephemeris ignores them; one that does not")
+	fmt.Println("starts faster. About 0.5 kbit/s.")
 	a.Ephemeris = askYesNo(in, "Broadcast ephemeris", a.Ephemeris)
 	a.CasterListen = ask(in, "NTRIP caster listens on", a.CasterListen)
 	a.WebListen = ask(in, "Web UI listens on", a.WebListen)

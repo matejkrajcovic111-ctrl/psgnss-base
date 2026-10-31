@@ -220,6 +220,17 @@ func CanGenerate(msgType int) bool {
 	return false
 }
 
+// IsEphemeris reports whether msgType is an RTCM broadcast-ephemeris message:
+// GPS 1019, GLONASS 1020, NavIC 1041, BeiDou 1042, QZSS 1044, Galileo F/NAV
+// 1045 and I/NAV 1046.
+func IsEphemeris(msgType int) bool {
+	switch msgType {
+	case 1019, 1020, 1041, 1042, 1044, 1045, 1046:
+		return true
+	}
+	return false
+}
+
 // MSM header bit offsets, from the RTCM 10403.x MSM header layout:
 // DF002 message number (12) | DF003 reference station ID (12) |
 // GNSS epoch time (30) | DF393 multiple message bit (1) | ...

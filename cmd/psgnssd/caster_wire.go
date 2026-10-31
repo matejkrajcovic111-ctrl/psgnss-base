@@ -8,6 +8,7 @@ import (
 	"text/tabwriter"
 	"time"
 
+	"github.com/psgnss/psgnss-base/internal/boardprofile"
 	"github.com/psgnss/psgnss-base/internal/caster"
 	"github.com/psgnss/psgnss-base/internal/config"
 	"github.com/psgnss/psgnss-base/internal/ephemeris"
@@ -69,25 +70,21 @@ func buildCaster(cfg *config.Config, h *hub.Hub, db *store.Store,
 		return nil, err
 	}
 
+	profile, err := boardprofile.Resolve(cfg.Receiver.Profile, cfg.Receiver.Model)
+	if err != nil {
+		return nil, err
+	}
 	for _, mp := range cfg.Caster.Mountpoint {
 		if mp.Disabled {
 			continue
 		}
-		specs := make([]hub.FilterSpec, 0, len(mp.Messages))
 		types := make([]int, 0, len(mp.Messages))
 		intervals := map[int]int{}
-		generated := map[int]int{}
 		for _, m := range mp.Messages {
 			types = append(types, m.Type)
 			intervals[m.Type] = m.Interval
-			// Types the receiver never emits are synthesised rather than
-			// filtered from a stream that will never contain them.
-			if rtcm.CanGenerate(m.Type) || ephemeris.Supports(m.Type) {
-				generated[m.Type] = m.Interval
-				continue
-			}
-			specs = append(specs, hub.FilterSpec{Type: m.Type, Interval: m.Interval})
 		}
+		specs, generated := mountMessagePlan(mp.Messages, profile.NativeEphemeris)
 		f, err := hub.NewFilter(hub.ProtoRTCM3, specs)
 		if err != nil {
 			return nil, fmt.Errorf("mountpoint %q: %w", mp.Name, err)
@@ -152,6 +149,32 @@ func buildCaster(cfg *config.Config, h *hub.Hub, db *store.Store,
 		}
 	}
 	return c, nil
+}
+
+// mountMessagePlan splits a mountpoint's messages into those filtered from the
+// receiver stream and those synthesised, with their intervals.
+//
+// Types the receiver never emits are synthesised rather than filtered from a
+// stream that will never contain them: always the station messages, and the
+// ephemeris too unless the receiver emits it itself. Native ephemeris arrives
+// one message per second per type, rotating through the satellites, so it is
+// never decimated: a 30 s interval would keep one satellite in thirty.
+func mountMessagePlan(msgs []config.MessageSel, nativeEphemeris bool) ([]hub.FilterSpec, map[int]int) {
+	specs := make([]hub.FilterSpec, 0, len(msgs))
+	generated := map[int]int{}
+	for _, m := range msgs {
+		switch {
+		case rtcm.CanGenerate(m.Type):
+			generated[m.Type] = m.Interval
+		case nativeEphemeris && rtcm.IsEphemeris(m.Type):
+			specs = append(specs, hub.FilterSpec{Type: m.Type})
+		case !nativeEphemeris && ephemeris.Supports(m.Type):
+			generated[m.Type] = m.Interval
+		default:
+			specs = append(specs, hub.FilterSpec{Type: m.Type, Interval: m.Interval})
+		}
+	}
+	return specs, generated
 }
 
 func sortedTypes(m map[int]int) []int {
