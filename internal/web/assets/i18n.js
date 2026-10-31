@@ -460,6 +460,7 @@ const SK = {
   "Map": "Mapa",
   "Ortho": "Ortofoto",
   "Raw data": "Surové dáta",
+  "Satellite letters": "Označenie satelitov",
   "Every number the receiver sends, live": "Všetky čísla z prijímača, naživo",
   "Table": "Tabuľka",
   "Navigation": "Navigácia",

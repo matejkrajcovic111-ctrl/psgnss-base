@@ -589,6 +589,9 @@ function SNRBars({ sats, hovered, onHover }) {
    requested while this is closed. */
 const RAW_NAV=['GPS','Galileo','BeiDou','GLONASS','QZSS'];
 const RAW_COLUMN=460;
+/* RINEX letters, which is what this table prints. BeiDou is C here but B on the
+   skyplot and the signal chart, so the legend is what connects the two. */
+const RAW_LETTERS={GPS:'G',Galileo:'E',BeiDou:'C',GLONASS:'R',SBAS:'S',QZSS:'J',NavIC:'I'};
 const rawNum=(v,d) => v ? v.toFixed(d) : '-';
 function rawColumns(sats,count){
   const total=sats.reduce((n,s)=>n+s.sig.length,0), out=[[]];
@@ -655,6 +658,14 @@ function RawData({ onClose }) {
       <span class="muted raw-count">${t('{n} satellites',{n:obs?sats.length:rows.length})}${obs&&newest?' · GPST '+newest:''}</span>
       <button class="btn act" ref=${close} onClick=${onClose}>${t("Close")}</button>
     </div>
+    ${obs?html`<div class="raw-legend" role="list" aria-label=${t("Satellite letters")}>
+      ${Object.entries(RAW_LETTERS).map(([name,letter])=>{
+        const count=all.filter(s=>s.sys===name).length;
+        return html`<span key=${name} role="listitem" class=${count?'':'none'}>
+          <b class="mono" style=${{color:systemStyle(name).color}}>${letter}</b> ${name} <i class="mono">${count}</i>
+        </span>`;
+      })}
+    </div>`:null}
     ${err?html`<p class="err">${err}</p>`:null}
     ${empty?html`<p class="muted">${obs?t("Waiting for observations…"):t("Waiting for this constellation's broadcast ephemeris. Each satellite repeats it within a few minutes.")}</p>`:null}
     <div class="rawdata-scroll" ref=${body}>
