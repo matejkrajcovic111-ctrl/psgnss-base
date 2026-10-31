@@ -60,7 +60,7 @@ func TestWebPreferenceValidation(t *testing.T) {
 		t.Fatal("duplicate default display constellation accepted")
 	}
 	c = validTestConfig()
-	c.Web.MapLayers = []string{"zbgis-ortho", "zbgis-cadastre"}
+	c.Web.MapLayers = []string{"google-ortho"}
 	if err := c.Validate(); err != nil {
 		t.Fatalf("known map layers rejected: %v", err)
 	}
@@ -68,7 +68,7 @@ func TestWebPreferenceValidation(t *testing.T) {
 	if err := c.Validate(); err == nil {
 		t.Fatal("unknown map layer accepted")
 	}
-	c.Web.MapLayers = []string{"zbgis-ortho", "zbgis-ortho"}
+	c.Web.MapLayers = []string{"google-ortho", "google-ortho"}
 	if err := c.Validate(); err == nil {
 		t.Fatal("repeated map layer accepted")
 	}

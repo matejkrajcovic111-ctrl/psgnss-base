@@ -187,13 +187,13 @@ type Web struct {
 	MapCacheDir  string `toml:"map_cache_dir"`
 	MapCacheDays int    `toml:"map_cache_days"`
 	// MapLayers adds base maps to the selector, next to map_tiles. See
-	// KnownMapLayers; the national ones are only useful in their own country.
+	// KnownMapLayers.
 	MapLayers []string `toml:"map_layers"`
 }
 
 // KnownMapLayers are the ids web.map_layers accepts. Their sources are defined
-// in internal/web, because each is a fixed public service rather than a setting.
-var KnownMapLayers = []string{"zbgis-ortho", "zbgis-cadastre"}
+// in internal/web, because each is a fixed service rather than a setting.
+var KnownMapLayers = []string{"google-ortho"}
 
 // RTCMOut is one non-caster output of a mountpoint's stream: a UDP target or a
 // serial port feeding a radio. From RTKBase's [rtcm_udp_*] and [rtcm_serial]

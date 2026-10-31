@@ -117,9 +117,10 @@ function StationMap({ position, map, coverage }) {
   if(lat==null||lon==null)return null;
   return html`<div class="card plot-card map-card">
     <div class="map-title"><h2>${t("Base Position and Working Range")}</h2>
-      ${layers.length>1?html`<select class="map-layer" aria-label=${t("Base map")} value=${layer.id} onChange=${e=>pickLayer(e.target.value)}>
-        ${layers.map(l=>html`<option key=${l.id} value=${l.id}>${t(l.label)}</option>`)}
-      </select>`:null}
+      ${layers.length>1?html`<div class="map-layers" role="group" aria-label=${t("Base map")}>
+        ${layers.map(l=>html`<button key=${l.id} aria-pressed=${l.id===layer.id}
+          class=${l.id===layer.id?'on':''} onClick=${()=>pickLayer(l.id)}>${t(l.label)}</button>`)}
+      </div>`:null}
     </div>
     ${!tiles?html`<p class="note map-note">${t("No tile source configured, so no map is shown. Settings → Station and service can set one.")}</p>`
       :err?html`<p class="err map-note">${err}</p>`
@@ -516,27 +517,37 @@ function Skyplot({ sats, hovered, onHover }) {
 
 /* Signal-to-noise bars, one row per constellation so that every satellite
    fits on screen without scrolling. Unlike the skyplot this has to be measured:
-   the labels are real type and must not stretch with the box. Within a row
-   every satellite has the same slots in the same order, the one the heading
-   lists, so an empty slot means that satellite is not sending that signal. */
+   the labels are real type and must not stretch with the box. A satellite's
+   bars sit side by side in the order the heading lists, without gaps for
+   signals it does not send; hovering a bar names its signal. */
 function SNRBars({ sats, hovered, onHover }) {
   const host=useRef(null);
   const { w, h }=useSize(host);
   const rows=Object.keys(PLOT_SYSTEMS).map(system => {
-    const group=sats.filter(s => s.system===system && Object.keys(s.signals||{}).length);
-    const bands=[...new Set(group.flatMap(s => Object.keys(s.signals)))].sort((a,b) => a.localeCompare(b));
+    const group=sats.filter(s => s.system===system && Object.keys(s.signals||{}).length).map(s => ({
+      sat:s, bands:Object.keys(s.signals).sort((a,b) => a.localeCompare(b)) }));
+    const bands=[...new Set(group.flatMap(g => g.bands))].sort((a,b) => a.localeCompare(b));
     return { system, group, bands, cfg:systemStyle(system) };
   }).filter(r => r.group.length);
   if (!w || !h || !rows.length) return html`<div class="snr-host" ref=${host}></div>`;
-  const headH=18, padL=26, padR=6, padT=3, padB=14, gap=6;
+  const headH=18, padL=26, padR=6, padT=3, padB=14, gap=6, nameW=24;
   const svgH=Math.max(44, Math.floor(h/rows.length)-headH), plotH=svgH-padT-padB;
   const plotW=Math.max(10, w-padL-padR);
   const yFor=v => padT+plotH*(1-Math.max(0,Math.min(60,v))/60);
   return html`<div class="snr-host" ref=${host}>
     ${rows.map(r => {
-      const n=r.group.length, slot=Math.min(16,(plotW-gap*(n-1))/(n*r.bands.length));
-      const groupW=slot*r.bands.length, barW=Math.max(1.5,slot-1);
-      const nameSize=Math.max(7,Math.min(11,groupW/2.3));
+      /* A satellite is never narrower than its name. Those that hit this
+         minimum take their width first and the bars share what is left. */
+      const room=plotW-gap*(r.group.length-1);
+      let slot=room/r.group.reduce((n,g) => n+g.bands.length,0);
+      const narrow=r.group.filter(g => g.bands.length*slot<nameW);
+      if (narrow.length<r.group.length) slot=(room-narrow.length*nameW)/
+        r.group.filter(g => !narrow.includes(g)).reduce((n,g) => n+g.bands.length,0);
+      slot=Math.max(2,Math.min(16,slot));
+      const widths=r.group.map(g => Math.max(nameW,g.bands.length*slot));
+      const scale=Math.min(1,room/widths.reduce((a,b) => a+b,0));
+      const barW=Math.max(1.5,slot-1);
+      let x=padL;
       return html`<div class="snr-row" key=${r.system}>
         <div class="snr-head"><b style=${{color:r.cfg.color}}>${r.system}</b> <span>${r.bands.join(' · ')}</span></div>
         <svg width=${w} height=${svgH} role="img" aria-label=${t("Signal to noise ratio by band")+': '+r.system}>
@@ -544,24 +555,24 @@ function SNRBars({ sats, hovered, onHover }) {
             <line x1=${padL-3} y1=${yFor(v)} x2=${w-padR} y2=${yFor(v)} class="snr-grid"/>
             <text x=${padL-5} y=${yFor(v)} textAnchor="end" dominantBaseline="central" class="snr-tick">${v}</text>
           </g>`)}
-          ${r.group.map((s,i) => {
-            const key=plotKey(s), on=hovered===key, x0=padL+i*(groupW+gap), name=r.cfg.short+s.sv;
+          ${r.group.map((g,i) => {
+            const s=g.sat, key=plotKey(s), on=hovered===key, name=r.cfg.short+s.sv;
+            const width=widths[i]*scale, x0=x, first=x0+(width-g.bands.length*slot*scale)/2;
+            x+=width+gap;
             return html`<g key=${key} class=${hovered&&!on?'snr-sat dim':'snr-sat'}
                 onMouseEnter=${()=>onHover(key)} onMouseLeave=${()=>onHover(null)}>
-              <rect x=${x0-1} y=${padT} width=${groupW+1} height=${plotH} class="snr-group"/>
-              ${r.bands.map((band,j) => {
-                const cno=s.signals[band];
-                if (!cno) return null;
-                const y=yFor(cno), height=Math.max(1,padT+plotH-y);
+              ${g.bands.map((band,j) => {
+                const cno=s.signals[band], y=yFor(cno), height=Math.max(1,padT+plotH-y);
+                const bx=first+j*slot*scale;
                 return html`<g key=${band} class=${'snr-bar'+(s.elev<SKY_MASK?' low':'')}>
-                  <rect x=${x0+j*slot} y=${y} width=${barW} height=${height} fill=${r.cfg.color} rx="1"/>
+                  <rect x=${bx} y=${y} width=${barW*scale} height=${height} fill=${r.cfg.color} rx="1"/>
                   <title>${name} ${band}: ${Math.round(cno)} dB-Hz</title>
-                  ${height>14 && barW>=12 ? html`<text x=${x0+j*slot+barW/2} y=${y+10} textAnchor="middle"
+                  ${height>14 && barW*scale>=12 ? html`<text x=${bx+barW*scale/2} y=${y+10} textAnchor="middle"
                     class="snr-value">${Math.round(cno)}</text>` : null}
                 </g>`;
               })}
-              <text x=${x0+groupW/2} y=${svgH-3} textAnchor="middle" class="snr-name"
-                style=${{fontSize:nameSize+'px'}}>${name}</text>
+              <text x=${x0+width/2} y=${svgH-3} textAnchor="middle" class="snr-name"
+                style=${{fontSize:Math.max(7,Math.min(11,width/2.3))+'px'}}>${name}</text>
             </g>`;
           })}
         </svg>
@@ -570,18 +581,42 @@ function SNRBars({ sats, hovered, onHover }) {
   </div>`;
 }
 
-/* The raw data view: every number the receiver sends, as RTKNAVI's RTK Monitor
-   shows it. The server renders each table once a second however many people
-   watch, and nothing is requested while this is closed. Signals fill columns
-   by carrier frequency, highest first, so column 1 is a satellite's top band. */
+/* The raw data view: every number the receiver sends, in the spirit of
+   RTKNAVI's RTK Monitor. It fills the window and only ever scrolls downward:
+   observations are one line per signal, in as many side-by-side tables as the
+   width allows, and each ephemeris is a card of name and value. The server
+   renders each table once a second however many people watch, and nothing is
+   requested while this is closed. */
 const RAW_NAV=['GPS','Galileo','BeiDou','GLONASS','QZSS'];
+const RAW_COLUMN=460;
 const rawNum=(v,d) => v ? v.toFixed(d) : '-';
+function rawColumns(sats,count){
+  const total=sats.reduce((n,s)=>n+s.sig.length,0), out=[[]];
+  let lines=0;
+  sats.forEach(s=>{
+    if(lines>=total/count*out.length&&out.length<count)out.push([]);
+    out[out.length-1].push(s);
+    lines+=s.sig.length;
+  });
+  return out;
+}
+function RawObs({ sats }) {
+  return html`<table class="raw-table mono"><thead><tr>
+      <th>SAT</th><th>Sig</th><th title="dB-Hz">S</th><th>P (m)</th><th>L (cycle)</th><th>D (Hz)</th><th>I</th>
+    </tr></thead><tbody>
+      ${sats.flatMap(s=>s.sig.map((g,i)=>html`<tr key=${s.sat+g.c} class=${i?'':'raw-first'}>
+        <td style=${{color:systemStyle(s.sys).color}}>${i?'':s.sat}</td><td>${g.c}</td><td>${rawNum(g.s,1)}</td>
+        <td>${rawNum(g.p,3)}</td><td>${rawNum(g.l,3)}</td><td>${rawNum(g.d,3)}</td><td>${g.i}</td>
+      </tr>`))}
+    </tbody></table>`;
+}
 function RawData({ onClose }) {
   const [view,setView]=useState('obs');
   const [system,setSystem]=useState('ALL');
   const [data,setData]=useState(null);
   const [err,setErr]=useState('');
-  const close=useRef(null);
+  const close=useRef(null), body=useRef(null);
+  const { w }=useSize(body);
   useEffect(()=>{
     let active=true;
     setData(null); setErr('');
@@ -602,50 +637,38 @@ function RawData({ onClose }) {
   const all=(obs&&data&&data.sats)||[];
   const present=[...new Set(all.map(s=>s.sys))];
   const sats=system==='ALL'?all:all.filter(s=>s.sys===system);
-  const slots=Array.from({length:sats.reduce((m,s)=>Math.max(m,s.sig.length),0)},(_,i)=>i);
-  const heads=[['C',''],['S',' (dB-Hz)'],['P',' (m)'],['L',' (cycle)'],['D',' (Hz)'],['I','']];
   const rows=(!obs&&data&&data.rows)||[];
+  const columns=(data&&data.columns)||[];
   const empty=data&&!(obs?sats.length:rows.length);
-  return html`<div class="modal-backdrop raw-backdrop" role="dialog" aria-modal="true" aria-label=${t("Raw data")}
-      onClick=${e=>{if(e.target===e.currentTarget)onClose()}}>
-    <div class="card raw-card">
-      <div class="raw-bar">
-        <h2>${t("Raw data")}</h2>
-        <select aria-label=${t("Table")} value=${view} onChange=${e=>setView(e.target.value)}>
-          <option value="obs">${t("Observations")}</option>
-          ${RAW_NAV.map(n=>html`<option key=${n} value=${n}>${t("Navigation")}: ${n}</option>`)}
-        </select>
-        ${obs?html`<select aria-label=${t("Constellation")} value=${system} onChange=${e=>setSystem(e.target.value)}>
-          <option value="ALL">${t("All constellations")}</option>
-          ${present.map(n=>html`<option key=${n} value=${n}>${n}</option>`)}
-        </select>`:null}
-        <span class="muted raw-count">${obs?t('{n} satellites',{n:sats.length})+' · GPST':t('{n} satellites',{n:rows.length})}</span>
-        <button class="btn act" ref=${close} onClick=${onClose}>${t("Close")}</button>
-      </div>
-      ${err?html`<p class="err">${err}</p>`:null}
-      ${empty?html`<p class="muted">${obs?t("Waiting for observations…"):t("Waiting for this constellation's broadcast ephemeris. Each satellite repeats it within a few minutes.")}</p>`:null}
-      <div class="rawdata-scroll">
-        ${obs?html`<table class="raw-table mono"><thead><tr>
-            <th>SAT</th><th>${t("Time")}</th>
-            ${heads.flatMap(([k,u])=>slots.map(i=>html`<th key=${k+i}>${k}${i+1}${u}</th>`))}
-          </tr></thead><tbody>
-            ${sats.map(s=>html`<tr key=${s.sat}><td style=${{color:systemStyle(s.sys).color}}>${s.sat}</td><td>${s.t}</td>
-              ${slots.map(i=>html`<td key=${i}>${s.sig[i]?s.sig[i].c:'-'}</td>`)}
-              ${slots.map(i=>html`<td key=${i}>${s.sig[i]?rawNum(s.sig[i].s,1):'-'}</td>`)}
-              ${slots.map(i=>html`<td key=${i}>${s.sig[i]?rawNum(s.sig[i].p,3):'-'}</td>`)}
-              ${slots.map(i=>html`<td key=${i}>${s.sig[i]?rawNum(s.sig[i].l,3):'-'}</td>`)}
-              ${slots.map(i=>html`<td key=${i}>${s.sig[i]?rawNum(s.sig[i].d,3):'-'}</td>`)}
-              ${slots.map(i=>html`<td key=${i}>${s.sig[i]?s.sig[i].i:'-'}</td>`)}
-            </tr>`)}
-          </tbody></table>`
-        :html`<table class="raw-table mono"><thead><tr>
-            ${((data&&data.columns)||[]).map(c=>html`<th key=${c}>${c}</th>`)}
-          </tr></thead><tbody>
-            ${rows.map(r=>html`<tr key=${r[0]}>${r.map((v,i)=>html`<td key=${i}>${v}</td>`)}</tr>`)}
-          </tbody></table>`}
-      </div>
-      <p class="muted raw-note">${t("Observations come from the MSM7 messages and ephemeris from 1019, 1020, 1042, 1044, 1045 and 1046. I: 1 = cycle slip, 2 = half-cycle unresolved. SBAS and NavIC ephemeris are not in this stream.")}</p>
+  const newest=all.reduce((m,s)=>s.t>m?s.t:m,'');
+  return html`<div class="raw-screen" role="dialog" aria-modal="true" aria-label=${t("Raw data")}>
+    <div class="raw-bar">
+      <h2>${t("Raw data")}</h2>
+      <select aria-label=${t("Table")} value=${view} onChange=${e=>setView(e.target.value)}>
+        <option value="obs">${t("Observations")}</option>
+        ${RAW_NAV.map(n=>html`<option key=${n} value=${n}>${t("Navigation")}: ${n}</option>`)}
+      </select>
+      ${obs?html`<select aria-label=${t("Constellation")} value=${system} onChange=${e=>setSystem(e.target.value)}>
+        <option value="ALL">${t("All constellations")}</option>
+        ${present.map(n=>html`<option key=${n} value=${n}>${n}</option>`)}
+      </select>`:null}
+      <span class="muted raw-count">${t('{n} satellites',{n:obs?sats.length:rows.length})}${obs&&newest?' · GPST '+newest:''}</span>
+      <button class="btn act" ref=${close} onClick=${onClose}>${t("Close")}</button>
     </div>
+    ${err?html`<p class="err">${err}</p>`:null}
+    ${empty?html`<p class="muted">${obs?t("Waiting for observations…"):t("Waiting for this constellation's broadcast ephemeris. Each satellite repeats it within a few minutes.")}</p>`:null}
+    <div class="rawdata-scroll" ref=${body}>
+      ${obs?html`<div class="raw-columns">
+          ${rawColumns(sats,Math.max(1,Math.floor(w/RAW_COLUMN))).map(c=>html`<${RawObs} key=${c.length?c[0].sat:'none'} sats=${c}/>`)}
+        </div>`
+      :html`<div class="raw-cards">
+          ${rows.map(r=>html`<section class="raw-eph mono" key=${r[0]}>
+            <h3>${r[0]}</h3>
+            <dl>${columns.slice(1).map((c,i)=>html`<div key=${c}><dt>${c}</dt><dd>${r[i+1]}</dd></div>`)}</dl>
+          </section>`)}
+        </div>`}
+    </div>
+    <p class="muted raw-note">${t("Observations come from the MSM7 messages and ephemeris from 1019, 1020, 1042, 1044, 1045 and 1046. I: 1 = cycle slip, 2 = half-cycle unresolved. SBAS and NavIC ephemeris are not in this stream.")}</p>
   </div>`;
 }
 

@@ -102,13 +102,14 @@ layouts, signal tables and scale factors follow RTCM 10403 as RTKLIB's
 `rtcm3.c` reads it, © 2007-2023 T. Takasu, BSD-2-Clause. The view itself is
 modelled on RTKNAVI's RTK Monitor.
 
-## ZBGIS
+## Google imagery
 
-The dashboard's orthophoto and cadastral base maps are public web map services
-of the Geodesy, Cartography and Cadastre Authority of the Slovak Republic
-(ÚGKK SR, https://www.skgeodesy.sk). They are free of charge. The orthophoto is
-CC BY 4.0, © GKÚ Bratislava; the credit is shown on the map whenever a layer is
-selected. They are enabled per station with `web.map_layers`.
+The dashboard's Ortho base map, enabled with `web.map_layers`, is Google's
+satellite imagery, © Google, credited on the map whenever it is selected. It
+comes from Google's plain tile endpoint, not the keyed Map Tiles API, and this
+station proxies and caches it. Google's terms do not allow that, so Google may
+block it at any time. An operator who wants this on a public service should
+remove the layer or use a licensed source.
 
 ## u-blox interface descriptions
 

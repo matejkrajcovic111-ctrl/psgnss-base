@@ -140,18 +140,6 @@ func TestTileRateLimitFallsBackToStale(t *testing.T) {
 	}
 }
 
-func TestTileBBoxIsWebMercator(t *testing.T) {
-	if got := tileBBox(0, 0, 0); got != "-20037508.343,-20037508.343,20037508.343,20037508.343" {
-		t.Errorf("world tile = %s", got)
-	}
-	if got := tileBBox(1, 1, 0); got != "0.000,0.000,20037508.343,20037508.343" {
-		t.Errorf("north-east quarter = %s", got)
-	}
-	if got := tileURL("https://x.invalid/?BBOX={bbox}", 1, 0, 1); got != "https://x.invalid/?BBOX=-20037508.343,-20037508.343,0.000,0.000" {
-		t.Errorf("url = %s", got)
-	}
-}
-
 func TestEveryKnownLayerHasASource(t *testing.T) {
 	for _, id := range config.KnownMapLayers {
 		l, ok := tileLayers[id]
@@ -167,7 +155,7 @@ func TestLayerRouteServesOnlyEnabledLayers(t *testing.T) {
 	cfg.Web.MapAttribution = "x"
 	cfg.Web.MapCacheDir = t.TempDir()
 	srv := New(&Server{Cfg: cfg})
-	for _, path := range []string{"/tiles/zbgis-ortho/2/1/1", "/tiles/nonsense/2/1/1"} {
+	for _, path := range []string{"/tiles/google-ortho/2/1/1", "/tiles/nonsense/2/1/1"} {
 		rr := httptest.NewRecorder()
 		srv.mux.ServeHTTP(rr, httptest.NewRequest(http.MethodGet, path, nil))
 		if rr.Code != http.StatusNotFound {
@@ -177,17 +165,17 @@ func TestLayerRouteServesOnlyEnabledLayers(t *testing.T) {
 	if got := srv.mapLayers(); len(got) != 1 || got[0]["id"] != "osm" {
 		t.Errorf("layers = %v", got)
 	}
-	cfg.Web.MapLayers = []string{"zbgis-ortho"}
+	cfg.Web.MapLayers = []string{"google-ortho"}
 	got := srv.mapLayers()
-	if len(got) != 2 || got[1]["tiles"] != "tiles/zbgis-ortho/{z}/{x}/{y}" {
+	if len(got) != 2 || got[1]["tiles"] != "tiles/google-ortho/{z}/{x}/{y}" {
 		t.Errorf("layers = %v", got)
 	}
-	if strings.Contains(got[1]["tiles"], "skgeodesy") {
+	if strings.Contains(got[1]["tiles"], "google.com") {
 		t.Errorf("the page was given the upstream URL: %v", got[1])
 	}
 }
 
-// A WMS failure is a 200 with XML, which must not be cached as a tile.
+// A failure sent as a 200 with a text body must not be cached as a tile.
 func TestTileFetchRefusesNonImage(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/xml")

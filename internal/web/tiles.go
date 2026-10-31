@@ -46,23 +46,16 @@ const (
 	tileBurst = 40
 )
 
-// tileLayer is one extra base map. Each is a public national service reached
-// over WMS, so a tile is a GetMap request for its Web Mercator box.
+// tileLayer is one extra base map, proxied and cached like the configured one.
 type tileLayer struct {
 	label, attribution, template string
 }
 
-const wmsTile = "?SERVICE=WMS&VERSION=1.3.0&REQUEST=GetMap&STYLES=&CRS=EPSG:3857&BBOX={bbox}&WIDTH=256&HEIGHT=256"
-
-// tileLayers holds the sources for config.KnownMapLayers. Both are free of
-// charge; the orthophoto is CC BY 4.0, and the attribution below is the credit
-// each one asks for.
+// tileLayers holds the sources for config.KnownMapLayers. Google's imagery here
+// is its plain tile endpoint rather than the keyed Map Tiles API: see CREDITS.md
+// for what that means before enabling it elsewhere.
 var tileLayers = map[string]tileLayer{
-	"zbgis-ortho": {"Orthophoto (ZBGIS)", "© GKÚ Bratislava, ÚGKK SR (CC BY 4.0)",
-		"https://zbgisws.skgeodesy.sk/zbgis_ortofoto_wms/service.svc/get" + wmsTile + "&LAYERS=1&FORMAT=image/jpeg"},
-	"zbgis-cadastre": {"Cadastre (ZBGIS)", "© Úrad geodézie, kartografie a katastra SR",
-		"https://kataster.skgeodesy.sk/eskn/services/NR/kn_wms_norm/MapServer/WmsServer" + wmsTile +
-			"&LAYERS=1,2,3,4,5,6,7,8,10,11,12,13,14,15&FORMAT=image/png&TRANSPARENT=FALSE&BGCOLOR=0xFFFFFF"},
+	"google-ortho": {"Ortho", "Imagery © Google", "https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}"},
 }
 
 // mapLayers lists the base maps the page may offer, the configured one first.
@@ -288,20 +281,11 @@ func (c *tileCache) fresh(p string) ([]byte, bool) {
 	return b, true
 }
 
-// tileBBox is a tile's box in Web Mercator metres: west, south, east, north.
-func tileBBox(z, x, y int) string {
-	const half = 20037508.342789244
-	size := 2 * half / float64(int(1)<<uint(z))
-	return fmt.Sprintf("%.3f,%.3f,%.3f,%.3f", -half+float64(x)*size, half-float64(y+1)*size,
-		-half+float64(x+1)*size, half-float64(y)*size)
-}
-
-// tileURL fills a tile template. {s} rotates over a/b/c the way Leaflet would;
-// {bbox} is what a WMS asks for instead of the tile numbers.
+// tileURL fills a tile template. {s} rotates over a/b/c the way Leaflet would.
 func tileURL(template string, z, x, y int) string {
 	sub := string("abc"[(x+y)%3])
 	r := strings.NewReplacer("{z}", strconv.Itoa(z), "{x}", strconv.Itoa(x),
-		"{y}", strconv.Itoa(y), "{s}", sub, "{r}", "", "{bbox}", tileBBox(z, x, y))
+		"{y}", strconv.Itoa(y), "{s}", sub, "{r}", "")
 	return r.Replace(template)
 }
 
@@ -322,8 +306,8 @@ func fetchTile(ctx context.Context, template, agent string, z, x, y int) ([]byte
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("tile provider answered %s", resp.Status)
 	}
-	// A WMS reports a failure as a 200 with an XML body. Caching that would
-	// leave a broken tile in place for a month.
+	// A provider can report a failure as a 200 with a text body. Caching that
+	// would leave a broken tile in place for a month.
 	if kind := resp.Header.Get("Content-Type"); !strings.HasPrefix(kind, "image/") {
 		return nil, fmt.Errorf("tile provider answered with %q", kind)
 	}
