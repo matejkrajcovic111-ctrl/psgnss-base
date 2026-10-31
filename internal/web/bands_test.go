@@ -26,3 +26,14 @@ func TestSignalsOnOneFrequencyCountAsOneCarrier(t *testing.T) {
 		t.Error("GLONASS G1 is not GPS L1")
 	}
 }
+
+func TestCoverageIgnoresConstellationsNoMountpointCarries(t *testing.T) {
+	sats := []liveSat{{System: "GPS", CNO: 40}, {System: "Galileo", CNO: 40},
+		{System: "NavIC", CNO: 40}, {System: "QZSS", CNO: 40}, {System: "SBAS", CNO: 40}}
+	sigs := []liveSignal{{System: "GPS", Band: "L1 C/A", CNO: 40}, {System: "GPS", Band: "L2 CL", CNO: 40},
+		{System: "NavIC", Band: "L5 A", CNO: 40}}
+	r := liveCoverage(sats, sigs)
+	if r.Constellations != 2 || r.Bands != 2 {
+		t.Fatalf("%+v", r)
+	}
+}

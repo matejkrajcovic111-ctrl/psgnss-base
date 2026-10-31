@@ -540,21 +540,31 @@ func (s *Server) handleLive(w http.ResponseWriter, r *http.Request) {
 }
 
 // liveCoverage turns what the receiver is tracking into the usable-range
-// figure the dashboard draws as a circle. SBAS is excluded: it is a correction
-// service, not a ranging constellation for RTK.
+// figure the dashboard draws as a circle. It counts only what a rover receives:
+// SBAS is a correction service, not a ranging constellation for RTK, and no
+// mountpoint carries NavIC or QZSS observations, though the receiver tracks them.
 func liveCoverage(sats []liveSat, signals []liveSignal) coverage.Range {
 	systems, bands := map[string]bool{}, map[string]bool{}
 	for _, s := range sats {
-		if s.CNO > 0 && s.System != "SBAS" {
+		if s.CNO > 0 && broadcastSystem(s.System) {
 			systems[s.System] = true
 		}
 	}
 	for _, sig := range signals {
-		if sig.CNO > 0 && sig.System != "SBAS" && sig.Band != "" {
+		if sig.CNO > 0 && broadcastSystem(sig.System) && sig.Band != "" {
 			bands[carrierOf(sig.Band)] = true
 		}
 	}
 	return coverage.Estimate(coverage.Capability{Constellations: len(systems), Bands: len(bands)})
+}
+
+// broadcastSystem reports a constellation that reaches rovers as MSM.
+func broadcastSystem(system string) bool {
+	switch system {
+	case "GPS", "GLONASS", "Galileo", "BeiDou":
+		return true
+	}
+	return false
 }
 
 // carrierOf names the carrier frequency a band label sits on, so "{n} bands"
