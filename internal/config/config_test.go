@@ -60,6 +60,19 @@ func TestWebPreferenceValidation(t *testing.T) {
 		t.Fatal("duplicate default display constellation accepted")
 	}
 	c = validTestConfig()
+	c.Web.MapLayers = []string{"zbgis-ortho", "zbgis-cadastre"}
+	if err := c.Validate(); err != nil {
+		t.Fatalf("known map layers rejected: %v", err)
+	}
+	c.Web.MapLayers = []string{"somewhere-else"}
+	if err := c.Validate(); err == nil {
+		t.Fatal("unknown map layer accepted")
+	}
+	c.Web.MapLayers = []string{"zbgis-ortho", "zbgis-ortho"}
+	if err := c.Validate(); err == nil {
+		t.Fatal("repeated map layer accepted")
+	}
+	c = validTestConfig()
 	c.Web.DiagnosticsIntervalMinutes = 1441
 	if err := c.Validate(); err == nil {
 		t.Fatal("out-of-range diagnosis interval accepted")

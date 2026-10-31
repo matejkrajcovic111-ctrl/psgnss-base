@@ -48,10 +48,19 @@ function loadLeaflet() {
    drawn by Leaflet rather than its default icon, so no image assets are needed
    and the page keeps working when the tile host is unreachable: the map stays
    blank-grey, the marker and the readout still show. */
+const MAP_LAYER_KEY='psgnss.maplayer';
+const readMapLayer=()=>{try{return localStorage.getItem(MAP_LAYER_KEY)||''}catch{return ''}};
 function StationMap({ position, map, coverage }) {
-  const host=useRef(null), instance=useRef(null), marker=useRef(null), ring=useRef(null), fitted=useRef(0);
+  const host=useRef(null), instance=useRef(null), marker=useRef(null), ring=useRef(null), fitted=useRef(0), base=useRef(null), baseURL=useRef('');
   const [err,setErr]=useState('');
-  const tiles=map&&map.tiles, attribution=(map&&map.attribution)||'';
+  const [layerId,setLayerId]=useState(readMapLayer);
+  const layers=(map&&map.layers)||[];
+  const layer=layers.find(l=>l.id===layerId)||layers[0];
+  const tiles=layer&&layer.tiles, attribution=(layer&&layer.attribution)||'';
+  const pickLayer=id=>{
+    setLayerId(id);
+    try{localStorage.setItem(MAP_LAYER_KEY,id)}catch{/* private window: the choice just does not persist */}
+  };
   const lat=position&&position.latitude, lon=position&&position.longitude;
   const rangeKM=(coverage&&coverage.range_km)||0;
   /* One source of truth for the circle's colour: the --range token, so the
@@ -65,11 +74,15 @@ function StationMap({ position, map, coverage }) {
       if(!instance.current){
         instance.current=L.map(host.current,{attributionControl:true,zoomControl:true,
           scrollWheelZoom:false,keyboard:true}).setView([lat,lon],16);
-        L.tileLayer(tiles,{maxZoom:19,attribution}).addTo(instance.current);
         marker.current=L.circleMarker([lat,lon],{radius:7,weight:2,color:'#52b7e8',
           fillColor:'#52b7e8',fillOpacity:.65}).addTo(instance.current);
       }else{
         marker.current.setLatLng([lat,lon]);
+      }
+      if(baseURL.current!==tiles){
+        if(base.current)base.current.remove();
+        base.current=L.tileLayer(tiles,{maxZoom:19,attribution}).addTo(instance.current);
+        baseURL.current=tiles;
       }
       marker.current.bindTooltip(t('Base antenna'),{permanent:false});
       /* The working range is why this map is zoomed out at all: an antenna on
@@ -103,7 +116,11 @@ function StationMap({ position, map, coverage }) {
   },[]);
   if(lat==null||lon==null)return null;
   return html`<div class="card plot-card map-card">
-    <h2>${t("Base Position and Working Range")}</h2>
+    <div class="map-title"><h2>${t("Base Position and Working Range")}</h2>
+      ${layers.length>1?html`<select class="map-layer" aria-label=${t("Base map")} value=${layer.id} onChange=${e=>pickLayer(e.target.value)}>
+        ${layers.map(l=>html`<option key=${l.id} value=${l.id}>${t(l.label)}</option>`)}
+      </select>`:null}
+    </div>
     ${!tiles?html`<p class="note map-note">${t("No tile source configured, so no map is shown. Settings → Station and service can set one.")}</p>`
       :err?html`<p class="err map-note">${err}</p>`
       :html`<div class="map-host" ref=${host}></div>`}
@@ -319,8 +336,8 @@ const trackedSatelliteCount = live => ((live && live.satellites) || []).filter(s
    arrangement is remembered per browser, keyed by the page, and a browser that
    refuses storage simply starts from the default every time. Nothing here is
    sent to the station: this is a view preference, not configuration. */
-const TILE_KEY='psgnss.tiles.v1';
-const TILE_DEFAULTS=[{id:'skyplot',span:6,h:380},{id:'side',span:6,h:380},{id:'snr',span:12,h:320}];
+const TILE_KEY='psgnss.tiles.v2';
+const TILE_DEFAULTS=[{id:'skyplot',span:6,h:380},{id:'side',span:6,h:380},{id:'snr',span:12,h:560}];
 const TILE_MIN_SPAN=3, TILE_MIN_H=180, TILE_MAX_H=900;
 /* Eight handles. `x` and `y` are which way the pointer has to travel for the
    panel to grow: the right edge grows with a pointer moving right, the left
@@ -497,60 +514,155 @@ function Skyplot({ sats, hovered, onHover }) {
   </svg>`;
 }
 
-/* Signal-to-noise bars. Unlike the skyplot this one has to be measured: the
-   satellite labels are real type and must not stretch with the box. Bars are
-   grouped by satellite, one bar per band, tallest band first within a group. */
+/* Signal-to-noise bars, one row per constellation so that every satellite
+   fits on screen without scrolling. Unlike the skyplot this has to be measured:
+   the labels are real type and must not stretch with the box. Within a row
+   every satellite has the same slots in the same order, the one the heading
+   lists, so an empty slot means that satellite is not sending that signal. */
 function SNRBars({ sats, hovered, onHover }) {
   const host=useRef(null);
   const { w, h }=useSize(host);
-  const groups = sats.map(s => ({
-    key: plotKey(s), sat: s, cfg: systemStyle(s.system),
-    bands: Object.entries(s.signals||{}).sort((a,b) => a[0].localeCompare(b[0])),
-  })).filter(g => g.bands.length);
-  const bars = groups.reduce((n,g) => n + g.bands.length, 0);
-  if (!w || !h || !bars) return html`<div class="snr-host" ref=${host}></div>`;
-  const padL=30, padR=8, padT=10, padB=26, gap=7;
-  const plotW = Math.max(10, w - padL - padR), plotH = Math.max(10, h - padT - padB);
-  const slot = (plotW - gap * Math.max(0, groups.length - 1)) / bars;
-  const barW = Math.max(2, Math.min(slot, 22));
-  const yFor = v => padT + plotH * (1 - Math.max(0, Math.min(60, v)) / 60);
-  let x = padL;
-  const drawn = [];
-  groups.forEach(g => {
-    g.bands.forEach(([band, cno]) => {
-      drawn.push({ ...g, band, cno, x, y:yFor(cno) });
-      x += slot;
-    });
-    g.labelX = x - slot * g.bands.length / 2 - (slot - barW) / 2;
-    x += gap;
-  });
-  const ticks = [0,15,30,45,60];
+  const rows=Object.keys(PLOT_SYSTEMS).map(system => {
+    const group=sats.filter(s => s.system===system && Object.keys(s.signals||{}).length);
+    const bands=[...new Set(group.flatMap(s => Object.keys(s.signals)))].sort((a,b) => a.localeCompare(b));
+    return { system, group, bands, cfg:systemStyle(system) };
+  }).filter(r => r.group.length);
+  if (!w || !h || !rows.length) return html`<div class="snr-host" ref=${host}></div>`;
+  const headH=18, padL=26, padR=6, padT=3, padB=14, gap=6;
+  const svgH=Math.max(44, Math.floor(h/rows.length)-headH), plotH=svgH-padT-padB;
+  const plotW=Math.max(10, w-padL-padR);
+  const yFor=v => padT+plotH*(1-Math.max(0,Math.min(60,v))/60);
   return html`<div class="snr-host" ref=${host}>
-    <svg width=${w} height=${h} role="img" aria-label=${t("Signal to noise ratio by band")}>
-      ${ticks.map(t => html`<g key=${t}>
-        <line x1=${padL - 4} y1=${yFor(t)} x2=${w - padR} y2=${yFor(t)} class="snr-grid"/>
-        <text x=${padL - 7} y=${yFor(t)} textAnchor="end" dominantBaseline="central" class="snr-tick">${t}</text>
-      </g>`)}
-      ${drawn.map(d => {
-        const on = hovered === d.key, height = Math.max(1, padT + plotH - d.y);
-        return html`<g key=${d.key+d.band} class=${'snr-bar'+(hovered&&!on?' dim':'')+(d.sat.elev<SKY_MASK?' low':'')}
-            onMouseEnter=${()=>onHover(d.key)} onMouseLeave=${()=>onHover(null)}>
-          <rect x=${d.x} y=${d.y} width=${barW} height=${height} fill=${d.cfg.color} rx="2"/>
-          ${height > 16 && barW >= 12 ? html`<text x=${d.x + barW/2} y=${d.y + 11} textAnchor="middle"
-            class="snr-value">${Math.round(d.cno)}</text>` : null}
-        </g>`;
-      })}
-      ${groups.map(g => barW >= 9 ? html`<text key=${g.key} x=${g.labelX + barW/2} y=${h - padB + 14}
-        textAnchor="middle" class=${'snr-name'+(hovered&&hovered!==g.key?' dim':'')}
-        >${g.cfg.short}${g.sat.sv}</text>` : null)}
-      <text x="4" y=${padT + plotH/2} textAnchor="middle" class="snr-axis"
-        transform=${`rotate(-90 4 ${padT + plotH/2})`}>dB-Hz</text>
-    </svg>
+    ${rows.map(r => {
+      const n=r.group.length, slot=Math.min(16,(plotW-gap*(n-1))/(n*r.bands.length));
+      const groupW=slot*r.bands.length, barW=Math.max(1.5,slot-1);
+      const nameSize=Math.max(7,Math.min(11,groupW/2.3));
+      return html`<div class="snr-row" key=${r.system}>
+        <div class="snr-head"><b style=${{color:r.cfg.color}}>${r.system}</b> <span>${r.bands.join(' · ')}</span></div>
+        <svg width=${w} height=${svgH} role="img" aria-label=${t("Signal to noise ratio by band")+': '+r.system}>
+          ${[0,30,60].map(v => html`<g key=${v}>
+            <line x1=${padL-3} y1=${yFor(v)} x2=${w-padR} y2=${yFor(v)} class="snr-grid"/>
+            <text x=${padL-5} y=${yFor(v)} textAnchor="end" dominantBaseline="central" class="snr-tick">${v}</text>
+          </g>`)}
+          ${r.group.map((s,i) => {
+            const key=plotKey(s), on=hovered===key, x0=padL+i*(groupW+gap), name=r.cfg.short+s.sv;
+            return html`<g key=${key} class=${hovered&&!on?'snr-sat dim':'snr-sat'}
+                onMouseEnter=${()=>onHover(key)} onMouseLeave=${()=>onHover(null)}>
+              ${r.bands.map((band,j) => {
+                const cno=s.signals[band];
+                if (!cno) return null;
+                const y=yFor(cno), height=Math.max(1,padT+plotH-y);
+                return html`<g key=${band} class=${'snr-bar'+(s.elev<SKY_MASK?' low':'')}>
+                  <rect x=${x0+j*slot} y=${y} width=${barW} height=${height} fill=${r.cfg.color} rx="1"/>
+                  <title>${name} ${band}: ${Math.round(cno)} dB-Hz</title>
+                  ${height>14 && barW>=12 ? html`<text x=${x0+j*slot+barW/2} y=${y+10} textAnchor="middle"
+                    class="snr-value">${Math.round(cno)}</text>` : null}
+                </g>`;
+              })}
+              <text x=${x0+groupW/2} y=${svgH-3} textAnchor="middle" class="snr-name"
+                style=${{fontSize:nameSize+'px'}}>${name}</text>
+            </g>`;
+          })}
+        </svg>
+      </div>`;
+    })}
   </div>`;
 }
 
+/* The raw data view: every number the receiver sends, as RTKNAVI's RTK Monitor
+   shows it. The server renders each table once a second however many people
+   watch, and nothing is requested while this is closed. Signals fill columns
+   by carrier frequency, highest first, so column 1 is a satellite's top band. */
+const RAW_NAV=['GPS','Galileo','BeiDou','GLONASS','QZSS'];
+const rawNum=(v,d) => v ? v.toFixed(d) : '-';
+function RawData({ onClose }) {
+  const [view,setView]=useState('obs');
+  const [system,setSystem]=useState('ALL');
+  const [data,setData]=useState(null);
+  const [err,setErr]=useState('');
+  const close=useRef(null);
+  useEffect(()=>{
+    let active=true;
+    setData(null); setErr('');
+    const poll=()=>api('/api/rawdata?view='+encodeURIComponent(view))
+      .then(d=>{if(active){setData(d);setErr('')}})
+      .catch(e=>{if(active)setErr(e.message||t('failed'))});
+    poll();
+    const timer=setInterval(poll,1000);
+    return ()=>{active=false;clearInterval(timer)};
+  },[view]);
+  useEffect(()=>{
+    if(close.current)close.current.focus();
+    const key=e=>{if(e.key==='Escape')onClose()};
+    window.addEventListener('keydown',key);
+    return ()=>window.removeEventListener('keydown',key);
+  },[]);
+  const obs=view==='obs';
+  const all=(obs&&data&&data.sats)||[];
+  const present=[...new Set(all.map(s=>s.sys))];
+  const sats=system==='ALL'?all:all.filter(s=>s.sys===system);
+  const slots=Array.from({length:sats.reduce((m,s)=>Math.max(m,s.sig.length),0)},(_,i)=>i);
+  const heads=[['C',''],['S',' (dB-Hz)'],['P',' (m)'],['L',' (cycle)'],['D',' (Hz)'],['I','']];
+  const rows=(!obs&&data&&data.rows)||[];
+  const empty=data&&!(obs?sats.length:rows.length);
+  return html`<div class="modal-backdrop raw-backdrop" role="dialog" aria-modal="true" aria-label=${t("Raw data")}
+      onClick=${e=>{if(e.target===e.currentTarget)onClose()}}>
+    <div class="card raw-card">
+      <div class="raw-bar">
+        <h2>${t("Raw data")}</h2>
+        <select aria-label=${t("Table")} value=${view} onChange=${e=>setView(e.target.value)}>
+          <option value="obs">${t("Observations")}</option>
+          ${RAW_NAV.map(n=>html`<option key=${n} value=${n}>${t("Navigation")}: ${n}</option>`)}
+        </select>
+        ${obs?html`<select aria-label=${t("Constellation")} value=${system} onChange=${e=>setSystem(e.target.value)}>
+          <option value="ALL">${t("All constellations")}</option>
+          ${present.map(n=>html`<option key=${n} value=${n}>${n}</option>`)}
+        </select>`:null}
+        <span class="muted raw-count">${obs?t('{n} satellites',{n:sats.length})+' · GPST':t('{n} satellites',{n:rows.length})}</span>
+        <button class="btn act" ref=${close} onClick=${onClose}>${t("Close")}</button>
+      </div>
+      ${err?html`<p class="err">${err}</p>`:null}
+      ${empty?html`<p class="muted">${obs?t("Waiting for observations…"):t("Waiting for this constellation's broadcast ephemeris. Each satellite repeats it within a few minutes.")}</p>`:null}
+      <div class="raw-scroll">
+        ${obs?html`<table class="raw-table mono"><thead><tr>
+            <th>SAT</th><th>${t("Time")}</th>
+            ${heads.flatMap(([k,u])=>slots.map(i=>html`<th key=${k+i}>${k}${i+1}${u}</th>`))}
+          </tr></thead><tbody>
+            ${sats.map(s=>html`<tr key=${s.sat}><td style=${{color:systemStyle(s.sys).color}}>${s.sat}</td><td>${s.t}</td>
+              ${slots.map(i=>html`<td key=${i}>${s.sig[i]?s.sig[i].c:'-'}</td>`)}
+              ${slots.map(i=>html`<td key=${i}>${s.sig[i]?rawNum(s.sig[i].s,1):'-'}</td>`)}
+              ${slots.map(i=>html`<td key=${i}>${s.sig[i]?rawNum(s.sig[i].p,3):'-'}</td>`)}
+              ${slots.map(i=>html`<td key=${i}>${s.sig[i]?rawNum(s.sig[i].l,3):'-'}</td>`)}
+              ${slots.map(i=>html`<td key=${i}>${s.sig[i]?rawNum(s.sig[i].d,3):'-'}</td>`)}
+              ${slots.map(i=>html`<td key=${i}>${s.sig[i]?s.sig[i].i:'-'}</td>`)}
+            </tr>`)}
+          </tbody></table>`
+        :html`<table class="raw-table mono"><thead><tr>
+            ${((data&&data.columns)||[]).map(c=>html`<th key=${c}>${c}</th>`)}
+          </tr></thead><tbody>
+            ${rows.map(r=>html`<tr key=${r[0]}>${r.map((v,i)=>html`<td key=${i}>${v}</td>`)}</tr>`)}
+          </tbody></table>`}
+      </div>
+      <p class="muted raw-note">${t("Observations come from the MSM7 messages and ephemeris from 1019, 1020, 1042, 1044, 1045 and 1046. I: 1 = cycle slip, 2 = half-cycle unresolved. SBAS and NavIC ephemeris are not in this stream.")}</p>
+    </div>
+  </div>`;
+}
+
+/* Which constellations are shown is remembered per browser. Until someone
+   presses a button, the station's configured default applies. */
+const DISPLAY_KEY='psgnss.display';
+const readDisplay=()=>{try{return JSON.parse(localStorage.getItem(DISPLAY_KEY)||'{}')||{}}catch{return {}}};
 function GNSSPlots({ sats, signals, hiddenSystems=[], side=null, scope='dashboard' }) {
-  const [visible, setVisible] = useState(() => Object.fromEntries(Object.keys(PLOT_SYSTEMS).map(k => [k, !hiddenSystems.includes(k)])));
+  const [visible, setVisible] = useState(() => {
+    const saved=readDisplay();
+    return Object.fromEntries(Object.keys(PLOT_SYSTEMS).map(k => [k, typeof saved[k]==='boolean'?saved[k]:!hiddenSystems.includes(k)]));
+  });
+  const toggle=system=>setVisible(v=>{
+    const next={...v,[system]:!v[system]};
+    try{localStorage.setItem(DISPLAY_KEY,JSON.stringify(next))}catch{/* private window: the choice just does not persist */}
+    return next;
+  });
+  const [raw, setRaw] = useState(false);
   const [hovered, setHovered] = useState(null);
   const [reset, setReset] = useState(0);
   // NAV-SAT also reports known satellites the receiver has no carrier lock on.
@@ -580,7 +692,7 @@ function GNSSPlots({ sats, signals, hiddenSystems=[], side=null, scope='dashboar
         const count=sats.filter(s=>s.system===system && s.cno>0).length, on=visible[system];
         return html`<button key=${system} class=${'constellation-toggle '+(on?'on':'off')}
           style=${{'--sys-color':cfg.color}} aria-pressed=${on}
-          onClick=${()=>setVisible(v=>({...v,[system]:!v[system]}))}>
+          onClick=${()=>toggle(system)}>
           <i></i><span>${system}</span><b>${count}</b></button>`;
       })}
       ${hoveredSat ? html`<span class="instrument-hover mono">
@@ -588,8 +700,11 @@ function GNSSPlots({ sats, signals, hiddenSystems=[], side=null, scope='dashboar
         ${hoveredSat.elev}° ${t('elev')} · ${hoveredSat.azim}° ${t('az')} · ${bestCNO(hoveredSat)} dB-Hz</span>` : null}
       <button class="btn act tile-reset" onClick=${()=>setReset(n=>n+1)}
         title=${t("Put the panels back where they started")}>${t("Reset layout")}</button>
+      ${scope==='dashboard'?html`<button class="btn act raw-open" onClick=${()=>setRaw(true)}
+        title=${t("Every number the receiver sends, live")}>${t("Raw data")}</button>`:null}
     </div>
     <${TileGrid} scope=${scope} tiles=${panels} reset=${reset}/>
+    ${raw?html`<${RawData} onClose=${()=>setRaw(false)}/>`:null}
   </div>`;
 }
 

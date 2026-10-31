@@ -217,6 +217,9 @@ var (
 // not scrape.
 var tileLimit = newLimiter(3, 90)
 
+// The raw data view polls once a second per open tab.
+var rawDataLimit = newLimiter(3, 30)
+
 const anonymousConversions = 2
 
 // throttle is the outermost middleware: it caps request rate per caller,

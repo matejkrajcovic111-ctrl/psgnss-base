@@ -97,6 +97,19 @@ position integrity check as external processes. They are not linked in and not
 modified. RTKLIB is BSD-2-Clause; rtklibexplorer's demo5 fork carries the same
 terms.
 
+`internal/rawdata` shares no code with RTKLIB, but its MSM7 and ephemeris bit
+layouts, signal tables and scale factors follow RTCM 10403 as RTKLIB's
+`rtcm3.c` reads it, © 2007-2023 T. Takasu, BSD-2-Clause. The view itself is
+modelled on RTKNAVI's RTK Monitor.
+
+## ZBGIS
+
+The dashboard's orthophoto and cadastral base maps are public web map services
+of the Geodesy, Cartography and Cadastre Authority of the Slovak Republic
+(ÚGKK SR, https://www.skgeodesy.sk). They are free of charge. The orthophoto is
+CC BY 4.0, © GKÚ Bratislava; the credit is shown on the map whenever a layer is
+selected. They are enabled per station with `web.map_layers`.
+
 ## u-blox interface descriptions
 
 `internal/receiver/keydb.json` is generated from the published u-blox HPG

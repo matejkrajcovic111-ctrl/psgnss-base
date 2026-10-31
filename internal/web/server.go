@@ -31,6 +31,7 @@ import (
 	"github.com/psgnss/psgnss-base/internal/integrity"
 	"github.com/psgnss/psgnss-base/internal/logbuffer"
 	"github.com/psgnss/psgnss-base/internal/pushout"
+	"github.com/psgnss/psgnss-base/internal/rawdata"
 	"github.com/psgnss/psgnss-base/internal/rtcmout"
 	"github.com/psgnss/psgnss-base/internal/secrets"
 	"github.com/psgnss/psgnss-base/internal/store"
@@ -63,6 +64,7 @@ type Server struct {
 	Logs       *logbuffer.Buffer
 	Integrity  *integrity.Monitor
 	Ephemeris  *ephemeris.Store
+	RawData    *rawdata.Monitor
 	Pushout    *pushout.Manager
 	TimeSync   *timesync.Sender
 	RTCMOut    *rtcmout.Manager
@@ -132,7 +134,9 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("PUT /api/integrity/settings", s.auth(s.handleIntegritySettings))
 	s.mux.HandleFunc("POST /api/integrity/run", s.auth(s.handleIntegrityRun))
 	s.mux.HandleFunc("POST /api/integrity/cancel", s.auth(s.handleIntegrityCancel))
+	s.mux.HandleFunc("GET /api/rawdata", s.pub(s.handleRawData))
 	s.mux.HandleFunc("GET /tiles/{z}/{x}/{y}", s.pub(s.handleTile))
+	s.mux.HandleFunc("GET /tiles/{layer}/{z}/{x}/{y}", s.pub(s.handleTile))
 	s.mux.HandleFunc("GET /api/pushout", s.auth(s.handlePushoutStatus))
 	s.mux.HandleFunc("PUT /api/pushout", s.auth(s.handlePushoutSave))
 	s.mux.HandleFunc("POST /api/backup", s.auth(s.handleBackupCreate))
@@ -267,11 +271,41 @@ func (s *Server) securityHeaders(next http.Handler) http.Handler {
 
 // tileRoute is the same-origin path the page fetches tiles from, or empty when
 // no map is configured.
-func tileRoute(upstream string) string {
+func tileRoute(upstream, layer string) string {
 	if upstream == "" {
 		return ""
 	}
+	if layer != "" {
+		return "tiles/" + layer + "/{z}/{x}/{y}"
+	}
 	return "tiles/{z}/{x}/{y}"
+}
+
+// handleRawData serves the live raw data view. Every table is rendered at most
+// once a second however many people watch, and the caller limit only stops a
+// script hammering a public route: a viewer polls once a second.
+func (s *Server) handleRawData(w http.ResponseWriter, r *http.Request) {
+	if s.RawData == nil {
+		writeErr(w, http.StatusServiceUnavailable, "raw data is not available")
+		return
+	}
+	if !isAdmin(r) && !rawDataLimit.allow(realIP(r)) {
+		w.Header().Set("Retry-After", "5")
+		writeErr(w, http.StatusTooManyRequests, "too many raw data requests")
+		return
+	}
+	view := r.URL.Query().Get("view")
+	if view == "" {
+		view = "obs"
+	}
+	body, ok := s.RawData.JSON(view, time.Now())
+	if !ok {
+		writeErr(w, http.StatusBadRequest, "unknown raw data view")
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
+	_, _ = w.Write(body)
 }
 
 // auth wraps a handler so it requires a valid session.
@@ -519,8 +553,7 @@ func (s *Server) handleLive(w http.ResponseWriter, r *http.Request) {
 			// The page is given this daemon's own tile route, never the
 			// upstream URL: the browser must not talk to the provider, because
 			// it cannot identify itself the way the usage policy requires.
-			"tiles":       tileRoute(s.Cfg.Web.MapTiles),
-			"attribution": s.Cfg.Web.MapAttribution,
+			"layers": s.mapLayers(),
 		},
 	}
 	// An anonymous visitor gets what the public pages draw and nothing else.

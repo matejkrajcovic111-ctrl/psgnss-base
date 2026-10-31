@@ -27,6 +27,7 @@ import (
 	"github.com/psgnss/psgnss-base/internal/integrity"
 	"github.com/psgnss/psgnss-base/internal/logbuffer"
 	"github.com/psgnss/psgnss-base/internal/pushout"
+	"github.com/psgnss/psgnss-base/internal/rawdata"
 	"github.com/psgnss/psgnss-base/internal/rtcm"
 	"github.com/psgnss/psgnss-base/internal/rtcmout"
 	"github.com/psgnss/psgnss-base/internal/secrets"
@@ -325,6 +326,12 @@ func run(cfgPath string, checkOnly bool) error {
 	wg.Add(1)
 	go func() { defer wg.Done(); eph.Run(ctx, h) }()
 
+	// The dashboard's live raw data view.
+	raw := rawdata.New(slog.Default())
+	raw.Extra = eph.Messages
+	wg.Add(1)
+	go func() { defer wg.Done(); raw.Run(ctx, h) }()
+
 	cst, err := buildCaster(cfg, h, db, kr, eph, slog.Default())
 	if err != nil {
 		return err
@@ -515,7 +522,7 @@ func run(cfgPath string, checkOnly bool) error {
 		}
 		ws := web.New(&web.Server{
 			Cfg: cfg, ConfigPath: cfgPath, Store: db, Keyring: kr, Hub: h, Caster: cst,
-			Collector: coll, Downloader: dl, Integrity: integrityMonitor, Ephemeris: eph, Pushout: pushMgr,
+			Collector: coll, Downloader: dl, Integrity: integrityMonitor, Ephemeris: eph, RawData: raw, Pushout: pushMgr,
 			TimeSync: timeSender, RTCMOut: rtcmOut,
 			Archives: archives, Log: slog.Default(), Logs: logs,
 			Restart: func() error { return syscall.Kill(os.Getpid(), syscall.SIGHUP) },

@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/BurntSushi/toml"
@@ -185,7 +186,14 @@ type Web struct {
 	// is the part of the usage policy that asks clients not to re-fetch.
 	MapCacheDir  string `toml:"map_cache_dir"`
 	MapCacheDays int    `toml:"map_cache_days"`
+	// MapLayers adds base maps to the selector, next to map_tiles. See
+	// KnownMapLayers; the national ones are only useful in their own country.
+	MapLayers []string `toml:"map_layers"`
 }
+
+// KnownMapLayers are the ids web.map_layers accepts. Their sources are defined
+// in internal/web, because each is a fixed public service rather than a setting.
+var KnownMapLayers = []string{"zbgis-ortho", "zbgis-cadastre"}
 
 // RTCMOut is one non-caster output of a mountpoint's stream: a UDP target or a
 // serial port feeding a radio. From RTKBase's [rtcm_udp_*] and [rtcm_serial]
@@ -426,6 +434,16 @@ func (c *Config) Validate() error {
 	}
 	if c.Telemetry.DBPath == "" {
 		add("telemetry.db_path is required")
+	}
+	seenLayer := map[string]bool{}
+	for _, id := range c.Web.MapLayers {
+		if !slices.Contains(KnownMapLayers, id) {
+			add("web.map_layers contains unknown layer %q", id)
+		}
+		if seenLayer[id] {
+			add("web.map_layers repeats %q", id)
+		}
+		seenLayer[id] = true
 	}
 	validSystem := map[string]bool{"GPS": true, "Galileo": true, "BeiDou": true, "SBAS": true, "GLONASS": true, "QZSS": true, "NavIC": true}
 	seenSystem := map[string]bool{}

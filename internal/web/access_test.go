@@ -44,6 +44,8 @@ func TestPublicSurfaceIsExactlyTheReadOnlyPages(t *testing.T) {
 		{"POST", "/api/downloader/job/whatever/cancel"},
 		{"GET", "/api/downloader/download/whatever"},
 		{"GET", "/tiles/16/35000/22000"},
+		{"GET", "/tiles/zbgis-ortho/16/35000/22000"},
+		{"GET", "/api/rawdata?view=obs"},
 	}
 	for _, c := range public {
 		// This fixture has no collector or downloader behind it, so a public

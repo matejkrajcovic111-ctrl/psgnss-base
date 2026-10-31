@@ -67,7 +67,7 @@ func TestTileProxyIdentifiesItselfAndCaches(t *testing.T) {
 		t.Fatal("tile cache was not created for a configured map")
 	}
 
-	body, err := srv.tiles.get(context.Background(), cfg.Web.MapTiles, srv.tileAgent(), 16, 35000, 22000)
+	body, err := srv.tiles.get(context.Background(), "", cfg.Web.MapTiles, srv.tileAgent(), 16, 35000, 22000)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -82,7 +82,7 @@ func TestTileProxyIdentifiesItselfAndCaches(t *testing.T) {
 		t.Errorf("tile was not cached: %v", err)
 	}
 	// A second request must not reach the provider again.
-	if _, err := srv.tiles.get(context.Background(), cfg.Web.MapTiles, srv.tileAgent(), 16, 35000, 22000); err != nil {
+	if _, err := srv.tiles.get(context.Background(), "", cfg.Web.MapTiles, srv.tileAgent(), 16, 35000, 22000); err != nil {
 		t.Fatal(err)
 	}
 	if got := hits.Load(); got != 1 {
@@ -108,10 +108,10 @@ func TestTileRouteNeedsAConfiguredMap(t *testing.T) {
 }
 
 func TestPageNeverReceivesTheUpstreamTileURL(t *testing.T) {
-	if got := tileRoute(""); got != "" {
+	if got := tileRoute("", ""); got != "" {
 		t.Errorf("no map should mean no tile route, got %q", got)
 	}
-	got := tileRoute("https://tile.openstreetmap.org/{z}/{x}/{y}.png")
+	got := tileRoute("https://tile.openstreetmap.org/{z}/{x}/{y}.png", "")
 	if strings.Contains(got, "openstreetmap") || strings.HasPrefix(got, "http") {
 		t.Errorf("the page was given the upstream URL: %q", got)
 	}
@@ -124,18 +124,81 @@ func TestTileRateLimitFallsBackToStale(t *testing.T) {
 	for c.allow() {
 	}
 	// With no cached copy the request fails rather than queueing upstream work.
-	if _, err := c.get(context.Background(), "https://example.invalid/{z}/{x}/{y}.png", "test", 1, 0, 0); err == nil {
+	if _, err := c.get(context.Background(), "", "https://example.invalid/{z}/{x}/{y}.png", "test", 1, 0, 0); err == nil {
 		t.Error("rate limit did not stop the fetch")
 	}
 	// With a stale copy on disk, a stale tile is better than a blank map.
-	p := c.path(1, 0, 0)
+	p := c.path("", 1, 0, 0)
 	_ = os.MkdirAll(filepath.Dir(p), 0o755)
 	if err := os.WriteFile(p, []byte("OLD"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	c.maxAge = 0 // everything is stale
-	got, err := c.get(context.Background(), "https://example.invalid/{z}/{x}/{y}.png", "test", 1, 0, 0)
+	got, err := c.get(context.Background(), "", "https://example.invalid/{z}/{x}/{y}.png", "test", 1, 0, 0)
 	if err != nil || string(got) != "OLD" {
 		t.Errorf("stale tile not served: %q %v", got, err)
+	}
+}
+
+func TestTileBBoxIsWebMercator(t *testing.T) {
+	if got := tileBBox(0, 0, 0); got != "-20037508.343,-20037508.343,20037508.343,20037508.343" {
+		t.Errorf("world tile = %s", got)
+	}
+	if got := tileBBox(1, 1, 0); got != "0.000,0.000,20037508.343,20037508.343" {
+		t.Errorf("north-east quarter = %s", got)
+	}
+	if got := tileURL("https://x.invalid/?BBOX={bbox}", 1, 0, 1); got != "https://x.invalid/?BBOX=-20037508.343,-20037508.343,0.000,0.000" {
+		t.Errorf("url = %s", got)
+	}
+}
+
+func TestEveryKnownLayerHasASource(t *testing.T) {
+	for _, id := range config.KnownMapLayers {
+		l, ok := tileLayers[id]
+		if !ok || l.label == "" || l.attribution == "" || !strings.HasPrefix(l.template, "https://") {
+			t.Errorf("layer %q is incomplete: %+v", id, l)
+		}
+	}
+}
+
+func TestLayerRouteServesOnlyEnabledLayers(t *testing.T) {
+	cfg := &config.Config{}
+	cfg.Web.MapTiles = "https://tile.example.invalid/{z}/{x}/{y}.png"
+	cfg.Web.MapAttribution = "x"
+	cfg.Web.MapCacheDir = t.TempDir()
+	srv := New(&Server{Cfg: cfg})
+	for _, path := range []string{"/tiles/zbgis-ortho/2/1/1", "/tiles/nonsense/2/1/1"} {
+		rr := httptest.NewRecorder()
+		srv.mux.ServeHTTP(rr, httptest.NewRequest(http.MethodGet, path, nil))
+		if rr.Code != http.StatusNotFound {
+			t.Errorf("%s answered %d on a station without that layer", path, rr.Code)
+		}
+	}
+	if got := srv.mapLayers(); len(got) != 1 || got[0]["id"] != "osm" {
+		t.Errorf("layers = %v", got)
+	}
+	cfg.Web.MapLayers = []string{"zbgis-ortho"}
+	got := srv.mapLayers()
+	if len(got) != 2 || got[1]["tiles"] != "tiles/zbgis-ortho/{z}/{x}/{y}" {
+		t.Errorf("layers = %v", got)
+	}
+	if strings.Contains(got[1]["tiles"], "skgeodesy") {
+		t.Errorf("the page was given the upstream URL: %v", got[1])
+	}
+}
+
+// A WMS failure is a 200 with XML, which must not be cached as a tile.
+func TestTileFetchRefusesNonImage(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/xml")
+		_, _ = w.Write([]byte("<ServiceException/>"))
+	}))
+	defer upstream.Close()
+	c := newTileCache(t.TempDir(), 30)
+	if _, err := c.get(context.Background(), "layer", upstream.URL+"/{z}", "test", 1, 0, 0); err == nil {
+		t.Error("an XML error was accepted as a tile")
+	}
+	if _, err := os.Stat(c.path("layer", 1, 0, 0)); err == nil {
+		t.Error("an XML error was cached")
 	}
 }

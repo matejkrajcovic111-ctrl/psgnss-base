@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -44,6 +45,41 @@ const (
 	tileRate  = 4.0
 	tileBurst = 40
 )
+
+// tileLayer is one extra base map. Each is a public national service reached
+// over WMS, so a tile is a GetMap request for its Web Mercator box.
+type tileLayer struct {
+	label, attribution, template string
+}
+
+const wmsTile = "?SERVICE=WMS&VERSION=1.3.0&REQUEST=GetMap&STYLES=&CRS=EPSG:3857&BBOX={bbox}&WIDTH=256&HEIGHT=256"
+
+// tileLayers holds the sources for config.KnownMapLayers. Both are free of
+// charge; the orthophoto is CC BY 4.0, and the attribution below is the credit
+// each one asks for.
+var tileLayers = map[string]tileLayer{
+	"zbgis-ortho": {"Orthophoto (ZBGIS)", "© GKÚ Bratislava, ÚGKK SR (CC BY 4.0)",
+		"https://zbgisws.skgeodesy.sk/zbgis_ortofoto_wms/service.svc/get" + wmsTile + "&LAYERS=1&FORMAT=image/jpeg"},
+	"zbgis-cadastre": {"Cadastre (ZBGIS)", "© Úrad geodézie, kartografie a katastra SR",
+		"https://kataster.skgeodesy.sk/eskn/services/NR/kn_wms_norm/MapServer/WmsServer" + wmsTile +
+			"&LAYERS=1,2,3,4,5,6,7,8,10,11,12,13,14,15&FORMAT=image/png&TRANSPARENT=FALSE&BGCOLOR=0xFFFFFF"},
+}
+
+// mapLayers lists the base maps the page may offer, the configured one first.
+func (s *Server) mapLayers() []map[string]string {
+	if s.Cfg.Web.MapTiles == "" {
+		return []map[string]string{}
+	}
+	out := []map[string]string{{"id": "osm", "label": "Map",
+		"tiles": tileRoute(s.Cfg.Web.MapTiles, ""), "attribution": s.Cfg.Web.MapAttribution}}
+	for _, id := range s.Cfg.Web.MapLayers {
+		if l, ok := tileLayers[id]; ok {
+			out = append(out, map[string]string{"id": id, "label": l.label,
+				"tiles": tileRoute(s.Cfg.Web.MapTiles, id), "attribution": l.attribution})
+		}
+	}
+	return out
+}
 
 type tileCache struct {
 	dir    string
@@ -114,14 +150,30 @@ func (s *Server) handleTile(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusServiceUnavailable, "tile cache is not ready")
 		return
 	}
-	body, err := s.tiles.get(r.Context(), s.Cfg.Web.MapTiles, s.tileAgent(), z, x, y)
+	// Only a layer this station enabled gets through, so the name can neither
+	// reach an arbitrary source nor become part of a path unchecked.
+	layer, template := r.PathValue("layer"), s.Cfg.Web.MapTiles
+	if layer != "" {
+		l, known := tileLayers[layer]
+		if !known || !slices.Contains(s.Cfg.Web.MapLayers, layer) {
+			writeErr(w, http.StatusNotFound, "no such map layer")
+			return
+		}
+		template = l.template
+	}
+	body, err := s.tiles.get(r.Context(), layer, template, s.tileAgent(), z, x, y)
 	if err != nil {
 		s.Log.Debug("tile fetch failed", "z", z, "x", x, "y", y, "err", err)
 		// A missing tile is a grey square, not a broken page.
 		writeErr(w, http.StatusBadGateway, "tile unavailable: "+err.Error())
 		return
 	}
-	w.Header().Set("Content-Type", "image/png")
+	// A layer may be JPEG, and the cached bytes are all that say which.
+	kind := http.DetectContentType(body)
+	if !strings.HasPrefix(kind, "image/") {
+		kind = "image/png"
+	}
+	w.Header().Set("Content-Type", kind)
 	w.Header().Set("Cache-Control", "public, max-age=604800")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	_, _ = w.Write(body)
@@ -164,14 +216,16 @@ func parseTilePath(zs, xs, ys string) (z, x, y int, err error) {
 	return z, x, y, nil
 }
 
-func (c *tileCache) path(z, x, y int) string {
-	return filepath.Join(c.dir, strconv.Itoa(z), strconv.Itoa(x), strconv.Itoa(y)+".png")
+// path keeps the configured map at the cache root, where tiles from before
+// layers existed already are, and each extra layer in a directory of its own.
+func (c *tileCache) path(layer string, z, x, y int) string {
+	return filepath.Join(c.dir, layer, strconv.Itoa(z), strconv.Itoa(x), strconv.Itoa(y)+".png")
 }
 
 // get returns a tile from disk, fetching it upstream only when it is missing or
 // older than the cache age.
-func (c *tileCache) get(ctx context.Context, template, agent string, z, x, y int) ([]byte, error) {
-	p := c.path(z, x, y)
+func (c *tileCache) get(ctx context.Context, layer, template, agent string, z, x, y int) ([]byte, error) {
+	p := c.path(layer, z, x, y)
 	if b, ok := c.fresh(p); ok {
 		return b, nil
 	}
@@ -234,11 +288,20 @@ func (c *tileCache) fresh(p string) ([]byte, bool) {
 	return b, true
 }
 
-// tileURL fills a tile template. {s} rotates over a/b/c the way Leaflet would.
+// tileBBox is a tile's box in Web Mercator metres: west, south, east, north.
+func tileBBox(z, x, y int) string {
+	const half = 20037508.342789244
+	size := 2 * half / float64(int(1)<<uint(z))
+	return fmt.Sprintf("%.3f,%.3f,%.3f,%.3f", -half+float64(x)*size, half-float64(y+1)*size,
+		-half+float64(x+1)*size, half-float64(y)*size)
+}
+
+// tileURL fills a tile template. {s} rotates over a/b/c the way Leaflet would;
+// {bbox} is what a WMS asks for instead of the tile numbers.
 func tileURL(template string, z, x, y int) string {
 	sub := string("abc"[(x+y)%3])
 	r := strings.NewReplacer("{z}", strconv.Itoa(z), "{x}", strconv.Itoa(x),
-		"{y}", strconv.Itoa(y), "{s}", sub, "{r}", "")
+		"{y}", strconv.Itoa(y), "{s}", sub, "{r}", "", "{bbox}", tileBBox(z, x, y))
 	return r.Replace(template)
 }
 
@@ -250,7 +313,7 @@ func fetchTile(ctx context.Context, template, agent string, z, x, y int) ([]byte
 		return nil, err
 	}
 	req.Header.Set("User-Agent", agent)
-	req.Header.Set("Accept", "image/png,image/*;q=0.8")
+	req.Header.Set("Accept", "image/png,image/jpeg,image/*;q=0.8")
 	resp, err := tileClient.Do(req)
 	if err != nil {
 		return nil, err
@@ -258,6 +321,11 @@ func fetchTile(ctx context.Context, template, agent string, z, x, y int) ([]byte
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("tile provider answered %s", resp.Status)
+	}
+	// A WMS reports a failure as a 200 with an XML body. Caching that would
+	// leave a broken tile in place for a month.
+	if kind := resp.Header.Get("Content-Type"); !strings.HasPrefix(kind, "image/") {
+		return nil, fmt.Errorf("tile provider answered with %q", kind)
 	}
 	// A tile is a few kilobytes; anything far larger is not a tile.
 	return io.ReadAll(io.LimitReader(resp.Body, 1<<20))
