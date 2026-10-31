@@ -142,7 +142,7 @@ func decodeNav(p bits) (view, sat string, row []string, err error) {
 	a := m["sqrtA"] * m["sqrtA"]
 	return view, sat, []string{sat, n("health"), n("iode"), n("iodc"), n("ura"), fmt.Sprintf("%.0f", week), n("toe"), n("toc"),
 		fmt.Sprintf("%.3f", a), fmt.Sprintf("%.9f", m["e"]), fmt.Sprintf("%.9f", m["i0"]), fmt.Sprintf("%.9f", m["OMG0"]),
-		fmt.Sprintf("%.9f", m["omg"]), fmt.Sprintf("%.9f", m["M0"]), f("deln"), f("OMGd"), f("idot"), fmt.Sprintf("%.3f", m["crc"]), fmt.Sprintf("%.3f", m["crs"]),
+		fmt.Sprintf("%.9f", m["omg"]), fmt.Sprintf("%.9f", m["M0"]), f("deln"), f("OMGd"), f("idot"), fmt.Sprintf("%.6f", m["crc"]), fmt.Sprintf("%.6f", m["crs"]),
 		f("cuc"), f("cus"), f("cic"), f("cis"), f("af0"), f("af1"), f("af2"), f("tgd")}, nil
 }
 

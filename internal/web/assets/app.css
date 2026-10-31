@@ -539,15 +539,17 @@ button.act:disabled{opacity:.4;cursor:default}
 .snr-bar{cursor:pointer}
 .snr-bar.low rect{opacity:.6}
 .snr-sat.dim{opacity:.28}
+.snr-group{fill:var(--panel2);opacity:.45}
 .map-title{display:flex;align-items:center;justify-content:space-between;gap:var(--s2);flex-wrap:wrap;padding-right:var(--s6,32px)}
 .map-title h2{margin-bottom:0}
-.map-layer{max-width:100%}
+.map-layer{width:auto;max-width:100%}
 .raw-backdrop{padding:var(--s3)}
 .raw-card{width:min(1500px,100%);height:calc(100dvh - 2*var(--s3));max-height:none;margin:0;display:flex;flex-direction:column;gap:var(--s2);min-height:0}
 .raw-bar{display:flex;align-items:center;gap:var(--s2);flex-wrap:wrap}
 .raw-bar h2{margin:0}
+.raw-bar select{width:auto;max-width:100%}
 .raw-count{margin-left:auto;font-size:var(--fs-2)}
-.raw-scroll{flex:1 1 auto;min-height:0;overflow:auto;border:1px solid var(--line)}
+.rawdata-scroll{flex:1 1 auto;min-height:0;overflow:auto;border:1px solid var(--line)}
 .raw-table{border-collapse:separate;border-spacing:0;font-size:var(--fs-1)}
 .raw-table th,.raw-table td{padding:2px var(--s2);text-align:right;white-space:nowrap;border:0}
 .raw-table thead th{position:sticky;top:0;z-index:2;background:var(--panel2);color:var(--dim);font-weight:600}

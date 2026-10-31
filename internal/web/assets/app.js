@@ -548,6 +548,7 @@ function SNRBars({ sats, hovered, onHover }) {
             const key=plotKey(s), on=hovered===key, x0=padL+i*(groupW+gap), name=r.cfg.short+s.sv;
             return html`<g key=${key} class=${hovered&&!on?'snr-sat dim':'snr-sat'}
                 onMouseEnter=${()=>onHover(key)} onMouseLeave=${()=>onHover(null)}>
+              <rect x=${x0-1} y=${padT} width=${groupW+1} height=${plotH} class="snr-group"/>
               ${r.bands.map((band,j) => {
                 const cno=s.signals[band];
                 if (!cno) return null;
@@ -623,7 +624,7 @@ function RawData({ onClose }) {
       </div>
       ${err?html`<p class="err">${err}</p>`:null}
       ${empty?html`<p class="muted">${obs?t("Waiting for observations…"):t("Waiting for this constellation's broadcast ephemeris. Each satellite repeats it within a few minutes.")}</p>`:null}
-      <div class="raw-scroll">
+      <div class="rawdata-scroll">
         ${obs?html`<table class="raw-table mono"><thead><tr>
             <th>SAT</th><th>${t("Time")}</th>
             ${heads.flatMap(([k,u])=>slots.map(i=>html`<th key=${k+i}>${k}${i+1}${u}</th>`))}
