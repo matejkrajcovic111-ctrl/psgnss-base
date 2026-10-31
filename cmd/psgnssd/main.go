@@ -18,6 +18,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/psgnss/psgnss-base/internal/boardprofile"
 	"github.com/psgnss/psgnss-base/internal/config"
 	"github.com/psgnss/psgnss-base/internal/downloader"
 	"github.com/psgnss/psgnss-base/internal/ephemeris"
@@ -418,6 +419,14 @@ func run(cfgPath string, checkOnly bool) error {
 	// ---- RINEX downloader ----
 	ecefX, ecefY, ecefZ := rtcm.LLHToECEF(cfg.Station.Position.Latitude,
 		cfg.Station.Position.Longitude, cfg.Station.Position.Height)
+	rinexFreq := cfg.RINEX.Frequencies
+	if prof, err := boardprofile.Resolve(cfg.Receiver.Profile, cfg.Receiver.Model); err == nil &&
+		prof.Unicore() && rinexFreq < 5 {
+		// Measured on UM980 RTCM3: -f 4 drops BeiDou B1C (C1P/L1P), which the
+		// UM980 tracks and -f 5 keeps; -f 6 adds nothing.
+		slog.Info("raising rinex.frequencies for the UM980", "configured", rinexFreq, "used", 5)
+		rinexFreq = 5
+	}
 	dl := downloader.New(downloader.Options{
 		Sources: []downloader.Source{
 			// Spool first: the file currently being written lives here, so the
@@ -440,7 +449,7 @@ func run(cfgPath string, checkOnly bool) error {
 		},
 		ConvbinPath: cfg.RINEX.ConvbinPath,
 		Version:     cfg.RINEX.Version,
-		Frequencies: cfg.RINEX.Frequencies,
+		Frequencies: rinexFreq,
 		// Station identification for the RINEX header. A post-processing
 		// service reads these out of the file; without them a submission is
 		// anonymous. The position is the broadcast base coordinate in ECEF,

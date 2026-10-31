@@ -21,6 +21,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/psgnss/psgnss-base/internal/boardprofile"
 	"github.com/psgnss/psgnss-base/internal/config"
 	"github.com/psgnss/psgnss-base/internal/hub"
 	"github.com/psgnss/psgnss-base/internal/secrets"
@@ -270,7 +271,7 @@ func (m *Monitor) Run(ctx context.Context) (*store.IntegrityRun, error) {
 	}
 	defer os.RemoveAll(tmp)
 	conf, solution := filepath.Join(tmp, "rtkrcv.conf"), filepath.Join(tmp, "solution.pos")
-	feed, err := newRawFeed(m.hub)
+	feed, err := newRawFeed(m.hub, m.roverRTCM())
 	if err != nil {
 		return finish("error", "cannot open private receiver feed: "+err.Error())
 	}
@@ -370,7 +371,7 @@ func (m *Monitor) rtkConfig(s store.IntegritySettings, password, localStream, ou
 	return fmt.Sprintf(`console-passwd =
 inpstr1-type =tcpcli
 inpstr1-path =%s
-inpstr1-format =ubx
+inpstr1-format =%s
 inpstr2-type =ntripcli
 inpstr2-path =%s:%s@%s/%s
 inpstr2-format =rtcm3
@@ -401,7 +402,27 @@ misc-nmeacycle =5000
 misc-buffsize =131072
 misc-navmsgsel =all
 ant2-postype =rtcm
-`, localStream, s.Username, password, s.Host, s.Mountpoint, output)
+`, localStream, m.roverFormat(), s.Username, password, s.Host, s.Mountpoint, output)
+}
+
+// roverFormat is rtkrcv's input format for this station's own receiver. A UM980
+// emits no UBX, but its RTCM carries the MSM7 observations and its own
+// ephemeris, so rtkrcv reads rtcm3 from it; every other board keeps ubx.
+func (m *Monitor) roverFormat() string {
+	if m.roverRTCM() {
+		return "rtcm3"
+	}
+	return "ubx"
+}
+
+// roverRTCM reports whether the receiver is driven by Unicore. A configuration
+// that does not resolve to a profile keeps the UBX behaviour.
+func (m *Monitor) roverRTCM() bool {
+	if m.cfg == nil {
+		return false
+	}
+	p, err := boardprofile.Resolve(m.cfg.Receiver.Profile, m.cfg.Receiver.Model)
+	return err == nil && p.Unicore()
 }
 
 // rawFeed exposes one private, ephemeral loopback stream carrying this
@@ -418,6 +439,9 @@ ant2-postype =rtcm
 // observations, so the UBX stream supplies both, and the observations are the
 // receiver's own rather than MSM re-encodings. Only those two messages are
 // selected: NAV-PVT and the rest would be noise to rtkrcv.
+//
+// A UM980 has no UBX but emits its own RTCM ephemeris, so for it the feed is
+// MSM7 plus those messages instead (integrityFilterRTCM) and rtkrcv reads rtcm3.
 type rawFeed struct {
 	ln   net.Listener
 	sub  *hub.Sub
@@ -432,11 +456,30 @@ func integrityFilter() (*hub.Filter, error) {
 	})
 }
 
-func newRawFeed(h *hub.Hub) (*rawFeed, error) {
+// integrityFilterRTCM is the Unicore counterpart: the MSM7 observations and the
+// receiver's own ephemeris, which it emits one message per second per type,
+// rotating through satellites. Every occurrence is passed, since RTKLIB needs
+// each satellite's message and none repeats before its turn comes round.
+// MSM4 is left out: it duplicates MSM7 and would feed every epoch twice.
+func integrityFilterRTCM() (*hub.Filter, error) {
+	var specs []hub.FilterSpec
+	for _, t := range []int{
+		1077, 1087, 1097, 1107, 1117, 1127, // MSM7: GPS GLO GAL SBAS QZSS BDS
+		1019, 1020, 1042, 1044, 1045, 1046, // ephemeris: GPS GLO BDS QZSS GAL-F/NAV GAL-I/NAV
+	} {
+		specs = append(specs, hub.FilterSpec{Type: t})
+	}
+	return hub.NewFilter(hub.ProtoRTCM3, specs)
+}
+
+func newRawFeed(h *hub.Hub, rtcm bool) (*rawFeed, error) {
 	if h == nil {
 		return nil, errors.New("receiver hub is unavailable")
 	}
 	filter, err := integrityFilter()
+	if rtcm {
+		filter, err = integrityFilterRTCM()
+	}
 	if err != nil {
 		return nil, err
 	}

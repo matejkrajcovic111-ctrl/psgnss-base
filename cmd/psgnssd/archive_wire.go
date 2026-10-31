@@ -125,8 +125,8 @@ func rinexConvert(cfg *config.Config, rawPath, outDir string) error {
 	fmt.Printf("source   : %s\n", filepath.Base(rawPath))
 	fmt.Printf("content  : %s\n", content.String())
 	fmt.Printf("format   : %s (detected, not assumed from the filename)\n", content.Format())
-	if !content.HasUBX() {
-		fmt.Println("warning  : no UBX in this file; no navigation data can be produced")
+	if !content.HasNavigation() {
+		fmt.Println("warning  : no UBX navigation or RTCM ephemeris in this file; no navigation data can be produced")
 	}
 
 	base := filepath.Base(rawPath)

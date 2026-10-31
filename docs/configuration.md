@@ -130,7 +130,7 @@ Patterns use `%Y%m%d` and `%h`, generated in UTC.
 | Key | Notes |
 |---|---|
 | `convbin_path` | RTKLIB's converter |
-| `frequencies` | convbin's `-f`. Use 4 on a ZED-X20P; anything less quietly loses constellations, and startup refuses it |
+| `frequencies` | convbin's `-f`. Use 4 on a ZED-X20P; anything less quietly loses constellations, and startup refuses it. Use 5 on a UM980 (keeps BeiDou B1C); a lower value is raised to 5 there |
 | `version`, `raw_format`, `output_dir`, `compression` | |
 
 ---
