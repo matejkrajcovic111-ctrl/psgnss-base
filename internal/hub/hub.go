@@ -151,7 +151,11 @@ func (p *controlPipe) Read(dst []byte) (int, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	for len(p.buf) == 0 {
+		// Not under mu: Close needs it, and closing the subscription is what
+		// ends this wait. A Unicore session sees no frames between replies.
+		p.mu.Unlock()
 		b, ok := <-p.sub.C()
+		p.mu.Lock()
 		if !ok {
 			return 0, io.EOF
 		}
