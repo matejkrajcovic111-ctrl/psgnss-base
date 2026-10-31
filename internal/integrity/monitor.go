@@ -178,19 +178,21 @@ func (m *Monitor) Running() bool { m.mu.Lock(); defer m.mu.Unlock(); return m.ru
 func (m *Monitor) StartScheduler(ctx context.Context) {
 	t := time.NewTicker(30 * time.Second)
 	defer t.Stop()
+	var fired string // UTC day this scheduler last started a check
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case now := <-t.C:
 			s, err := m.store.IntegritySettings()
-			if err != nil || !s.Enabled || now.UTC().Format("15:04") != s.Schedule {
+			if err != nil || !s.Enabled {
 				continue
 			}
 			last, _ := m.store.LatestIntegrityRun()
-			if last != nil && time.Unix(last.StartedAt, 0).UTC().Format("2006-01-02") == now.UTC().Format("2006-01-02") {
+			if !scheduleDue(now, s.Schedule, last, fired) {
 				continue
 			}
+			fired = now.UTC().Format("2006-01-02")
 			go func() {
 				if _, err := m.Run(ctx); err != nil {
 					m.log.Warn("external integrity check failed", "err", err)
@@ -198,6 +200,18 @@ func (m *Monitor) StartScheduler(ctx context.Context) {
 			}()
 		}
 	}
+}
+
+// scheduleDue reports whether a tick at now should start the daily check. The
+// ticker runs twice a minute, and a run is recorded only when it finishes, so
+// the day the scheduler last fired is checked as well as the recorded runs.
+func scheduleDue(now time.Time, schedule string, last *store.IntegrityRun, fired string) bool {
+	now = now.UTC()
+	day := now.Format("2006-01-02")
+	if now.Format("15:04") != schedule || fired == day {
+		return false
+	}
+	return last == nil || time.Unix(last.StartedAt, 0).UTC().Format("2006-01-02") != day
 }
 
 // Run performs one bounded comparison. A concurrent manual or scheduled run

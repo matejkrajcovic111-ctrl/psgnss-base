@@ -31,6 +31,31 @@ func TestParseAndPreferFixedSolutions(t *testing.T) {
 	}
 }
 
+// The scheduler ticks every 30 seconds against an HH:MM schedule, so it sees
+// the scheduled minute twice. A run is recorded only when it finishes, so the
+// second tick used to find no run for today and start another, which was
+// refused as "already running" and logged as a failure every night.
+func TestScheduledCheckStartsOncePerDay(t *testing.T) {
+	first := time.Date(2026, 10, 31, 1, 0, 21, 0, time.UTC)
+	second := first.Add(30 * time.Second)
+	if !scheduleDue(first, "01:00", nil, "") {
+		t.Fatal("the first tick in the scheduled minute did not start the check")
+	}
+	if scheduleDue(second, "01:00", nil, "2026-10-31") {
+		t.Fatal("the second tick in the same minute started the check again")
+	}
+	if !scheduleDue(first.AddDate(0, 0, 1), "01:00", nil, "2026-10-31") {
+		t.Fatal("the next day's check did not start")
+	}
+	ranToday := &store.IntegrityRun{StartedAt: first.Add(-time.Hour).Unix()}
+	if scheduleDue(first, "01:00", ranToday, "") {
+		t.Fatal("a check already recorded today was repeated")
+	}
+	if scheduleDue(first.Add(time.Minute), "01:00", nil, "") {
+		t.Fatal("a check started outside its scheduled minute")
+	}
+}
+
 func TestHorizontalDistance(t *testing.T) {
 	if got := horizontalDistanceMM(48, 17, 48, 17); got != 0 {
 		t.Fatalf("same point = %f", got)

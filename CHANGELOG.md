@@ -10,6 +10,11 @@
   check reports current sync health rather than the lifetime failure count.
 - The base-position map no longer draws over the page help popover.
 - A failed RINEX conversion is now written to the log with its reason.
+- A rover too slow to keep up is dropped without taking the caster down. The
+  drop used to close its queue while the next frame was still being sent to
+  it, and the panic stopped every other rover as well.
+- The nightly integrity check starts once. The scheduler saw its minute twice
+  and started a second run, which was refused and logged as a failure.
 
 ## 1.0.0
 
