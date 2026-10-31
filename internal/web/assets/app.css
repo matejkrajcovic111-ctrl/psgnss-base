@@ -10,6 +10,7 @@
    the header switch (data-theme), which also flips Tabler's own data-bs-theme. */
 :root{
   /* surfaces and text */
+  --term-bg:#0b1220; --term-fg:#d6deeb; --term-ok:#7ee787; --term-bad:#ff7b72; --term-dim:#8b9bb4; /* console: a terminal in both themes */
   --bg:#f9fafb; --panel:#fff; --panel2:#f1f3f5; --line:#e5e7eb;
   --fg:#1f2937; --dim:#6b7280; --muted:var(--dim);
   /* state */
@@ -310,6 +311,13 @@ button.act:disabled{opacity:.4;cursor:default}
 .receiver-id .rd-v{font-size:var(--fs-3);overflow-wrap:anywhere}
 
 .receiver-pending{border-color:var(--warn)}
+/* The Unicore console is a terminal in both themes. */
+.uni-console{background:var(--term-bg);color:var(--term-fg);border:1px solid var(--line);font-family:var(--mono);font-size:var(--fs-2);
+  height:clamp(220px,38dvh,420px);overflow:auto;padding:var(--s2) var(--s3);margin-bottom:var(--s2)}
+.uni-line{margin:0;padding:0;background:none;border:0;color:inherit;font:inherit;white-space:pre-wrap;overflow-wrap:anywhere}
+.uni-line.cmd{color:var(--term-ok)}.uni-line.err{color:var(--term-bad)}.uni-line.info{color:var(--term-dim)}
+.uni-input{display:flex;align-items:center;gap:var(--s2)}.uni-input input{flex:1}.uni-prompt{color:var(--dim)}
+.uni-help summary{cursor:pointer;margin:var(--s2) 0}.uni-help a{text-decoration:none}
 .receiver-pending p{font-size:var(--fs-3)}
 .msg-rates{max-height:440px;overflow:auto}
 .msg-rates input.rate{width:62px;padding:var(--s1) var(--s2);text-align:right}

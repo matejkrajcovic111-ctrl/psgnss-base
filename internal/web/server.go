@@ -144,6 +144,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("DELETE /api/admins/{name}", s.auth(s.handleAdminDelete))
 	s.mux.HandleFunc("GET /api/receiver", s.auth(s.handleReceiver))
 	s.mux.HandleFunc("POST /api/receiver/apply", s.auth(s.handleReceiverApply))
+	s.mux.HandleFunc("POST /api/receiver/console", s.auth(s.handleReceiverConsole))
 	s.mux.HandleFunc("POST /api/receiver/commit", s.auth(s.handleReceiverCommit))
 	s.mux.HandleFunc("POST /api/receiver/revert", s.auth(s.handleReceiverRevert))
 	s.mux.HandleFunc("GET /api/receiver/stage0", s.auth(s.handleStage0Preview))
