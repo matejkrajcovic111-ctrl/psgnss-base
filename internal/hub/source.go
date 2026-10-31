@@ -32,6 +32,14 @@ func (s SerialSource) Open() (io.ReadCloser, error) {
 	if err != nil {
 		return nil, fmt.Errorf("open %s: %w", s.Device, err)
 	}
+	// One reader only. Two processes on one port each get a random share of
+	// its bytes and both see nothing but broken frames. flock binds root too,
+	// and is released on close, so the hub's own reconnect is unaffected.
+	// (TIOCEXCL is not used: root ignores it, and it outlives the close.)
+	if err := unix.Flock(int(f.Fd()), unix.LOCK_EX|unix.LOCK_NB); err != nil {
+		f.Close()
+		return nil, fmt.Errorf("open %s: another process already holds it (is psgnssd already running?): %w", s.Device, err)
+	}
 	if err := configureTTY(f, s.Baud); err != nil {
 		f.Close()
 		return nil, fmt.Errorf("configure %s: %w", s.Device, err)

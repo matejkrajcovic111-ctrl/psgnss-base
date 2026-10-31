@@ -63,6 +63,13 @@ func main() {
 		updInvJSON  = flag.Bool("dependencies-json", false, "with --dependencies, print JSON for the release tool")
 	)
 	flag.Parse()
+	if flag.NArg() > 0 {
+		// flag stops at the first word that is not a flag and ignores the
+		// rest, so `psgnssd user list --config x` would silently start a
+		// second daemon on the default config. Every option here is a flag.
+		fmt.Fprintf(os.Stderr, "error: unexpected argument %q (options are flags, e.g. --user-list; see --help)\n", flag.Arg(0))
+		os.Exit(2)
+	}
 
 	if *updInv || *updInvJSON {
 		// Runs without a configuration: a build should be able to say what it
