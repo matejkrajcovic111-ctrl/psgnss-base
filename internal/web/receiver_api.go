@@ -14,6 +14,7 @@ import (
 	"github.com/psgnss/psgnss-base/internal/boardprofile"
 	"github.com/psgnss/psgnss-base/internal/receiver"
 	"github.com/psgnss/psgnss-base/internal/store"
+	"github.com/psgnss/psgnss-base/internal/unicore"
 )
 
 // defaultStage0Path is where the Stage 0 receiver dump is deployed. It holds
@@ -27,6 +28,7 @@ const maxReceiverChanges = 64
 
 type pendingReceiverTxn struct {
 	txn            *receiver.Txn
+	uni            *unicore.Txn // set instead of txn for a Unicore receiver
 	pipe           io.Closer
 	logIDs         []int64
 	until          time.Time
@@ -139,6 +141,10 @@ func (s *Server) handleReceiver(w http.ResponseWriter, r *http.Request) {
 	}
 	if err != nil {
 		writeErr(w, http.StatusServiceUnavailable, err.Error())
+		return
+	}
+	if profile.Unicore() {
+		s.handleUnicoreReceiver(w, profile)
 		return
 	}
 	if !profile.Implemented || profile.Driver != boardprofile.DriverUBXVal {
@@ -407,6 +413,9 @@ type changeView struct {
 }
 
 func pendingView(p *pendingReceiverTxn) map[string]any {
+	if p.uni != nil {
+		return unicorePendingView(p)
+	}
 	cs := p.txn.Changes()
 	out := make([]changeView, 0, len(cs))
 	for _, c := range cs {
@@ -418,11 +427,11 @@ func pendingView(p *pendingReceiverTxn) map[string]any {
 }
 
 func (s *Server) watchReceiverTxn(p *pendingReceiverTxn) {
-	<-p.txn.Done
+	<-p.doneCh()
 	s.receiverMu.Lock()
 	if s.receiverTxn == p {
 		select {
-		case <-p.txn.Reverted:
+		case <-p.revertedCh():
 			for _, id := range p.logIDs {
 				_ = s.Store.MarkReceiverConfigReverted(id)
 			}
@@ -448,13 +457,13 @@ func (s *Server) settleReceiver(w http.ResponseWriter, r *http.Request, commit b
 			err = p.beforeCommit()
 		}
 		if err == nil {
-			err = p.txn.Commit()
+			err = p.commit()
 			if err != nil && p.rollbackCommit != nil {
 				p.rollbackCommit()
 			}
 		}
 	} else {
-		err = p.txn.Revert()
+		err = p.revert()
 	}
 	if err != nil {
 		s.receiverMu.Unlock()
@@ -470,7 +479,7 @@ func (s *Server) settleReceiver(w http.ResponseWriter, r *http.Request, commit b
 	s.receiverTxn = nil
 	s.receiverMu.Unlock()
 	s.Log.Info("receiver configuration transaction settled", "by", adminOf(r), "committed", commit,
-		"label", p.label, "keys", len(p.txn.Changes()))
+		"label", p.label, "keys", p.size())
 	writeJSON(w, http.StatusOK, map[string]bool{"ok": true, "committed": commit})
 	if commit && p.afterCommit != nil {
 		go p.afterCommit()
@@ -587,4 +596,40 @@ func (s *Server) handleStage0Restore(w http.ResponseWriter, r *http.Request) {
 		}
 		return kvs, 0, ""
 	})
+}
+
+// The settle paths below are shared by both receiver dialects.
+func (p *pendingReceiverTxn) doneCh() <-chan struct{} {
+	if p.uni != nil {
+		return p.uni.Done
+	}
+	return p.txn.Done
+}
+
+func (p *pendingReceiverTxn) revertedCh() <-chan struct{} {
+	if p.uni != nil {
+		return p.uni.Reverted
+	}
+	return p.txn.Reverted
+}
+
+func (p *pendingReceiverTxn) commit() error {
+	if p.uni != nil {
+		return p.uni.Commit()
+	}
+	return p.txn.Commit()
+}
+
+func (p *pendingReceiverTxn) revert() error {
+	if p.uni != nil {
+		return p.uni.Revert()
+	}
+	return p.txn.Revert()
+}
+
+func (p *pendingReceiverTxn) size() int {
+	if p.uni != nil {
+		return len(p.uni.Changes())
+	}
+	return len(p.txn.Changes())
 }

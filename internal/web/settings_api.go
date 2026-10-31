@@ -288,6 +288,10 @@ func (s *Server) handleSettingsStationIDApply(w http.ResponseWriter, r *http.Req
 		writeErr(w, 400, "bad request")
 		return
 	}
+	if _, ok := s.unicoreProfile(); ok {
+		s.unicoreStationIDApply(w, r, in.StationID)
+		return
+	}
 	b := make([]byte, 2)
 	binary.LittleEndian.PutUint16(b, in.StationID)
 	next := *s.Cfg
@@ -404,15 +408,23 @@ func signedLE32(v int32) []byte {
 	return b
 }
 
-func positionKVs(p positionInput) ([]receiver.KV, positionInput, error) {
+// checkPosition validates the coordinates before either receiver dialect sees them.
+func checkPosition(p positionInput) error {
 	if math.IsNaN(p.Latitude) || math.IsInf(p.Latitude, 0) || p.Latitude < -90 || p.Latitude > 90 {
-		return nil, p, errors.New("latitude must be between -90 and 90")
+		return errors.New("latitude must be between -90 and 90")
 	}
 	if math.IsNaN(p.Longitude) || math.IsInf(p.Longitude, 0) || p.Longitude < -180 || p.Longitude > 180 {
-		return nil, p, errors.New("longitude must be between -180 and 180")
+		return errors.New("longitude must be between -180 and 180")
 	}
 	if math.IsNaN(p.Height) || math.IsInf(p.Height, 0) || p.Height < -10000 || p.Height > 100000 {
-		return nil, p, errors.New("ellipsoidal height must be between -10000 and 100000 metres")
+		return errors.New("ellipsoidal height must be between -10000 and 100000 metres")
+	}
+	return nil
+}
+
+func positionKVs(p positionInput) ([]receiver.KV, positionInput, error) {
+	if err := checkPosition(p); err != nil {
+		return nil, p, err
 	}
 	lat, latHP, err := splitScaled(p.Latitude, 1e-7, 1e-9)
 	if err != nil {
@@ -442,6 +454,10 @@ func (s *Server) handleSettingsPositionApply(w http.ResponseWriter, r *http.Requ
 	d.DisallowUnknownFields()
 	if err := d.Decode(&in); err != nil {
 		writeErr(w, http.StatusBadRequest, "bad request")
+		return
+	}
+	if _, ok := s.unicoreProfile(); ok {
+		s.unicorePositionApply(w, r, in)
 		return
 	}
 	kvs, actual, err := positionKVs(in)

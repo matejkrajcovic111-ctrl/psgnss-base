@@ -1599,13 +1599,13 @@ function MountpointSettings({ settings }) {
   </div>`;
 }
 
-function BasePosition({ position, locked, onApplied, onError }) {
+function BasePosition({ position, locked, onApplied, onError, driver }) {
   const [p,setP]=useState(position);
   useEffect(()=>setP(position),[position && position.latitude,position && position.longitude,position && position.height]);
   if(!p)return null;
   const submit=async e=>{e.preventDefault();
     const next={latitude:Number(p.latitude),longitude:Number(p.longitude),height:Number(p.height)};
-    if(!confirm(t('Change the surveyed base position?\n\nThis updates receiver CFG-TMODE in RAM first. Corrections may move immediately. Verify the stream, then Keep to write both receiver flash and PSGNSSB configuration.')))return;
+    if(!confirm(driver==='unicore'?t('Change the surveyed base position?\n\nThis sends MODE BASE to the receiver\'s running configuration first. Corrections may move immediately. Verify the stream, then Keep to save it in the receiver and in the PSGNSSB configuration.'):t('Change the surveyed base position?\n\nThis updates receiver CFG-TMODE in RAM first. Corrections may move immediately. Verify the stream, then Keep to write both receiver flash and PSGNSSB configuration.')))return;
     try{onApplied(await api('/api/settings/position/apply',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(next)}));onError('');}
     catch(x){onError(x.message||t('Could not apply base position'));}
   };
@@ -1781,6 +1781,9 @@ function Receiver({ position, stationID }) {
     catch (x) { setErr(x.message || t('Could not settle receiver change')); setBusy(''); }
   };
   if (!data && !err && !pending) return html`<p class="muted">${t("Reading receiver configuration…")}</p>`;
+  if ((data && data.driver === "unicore") || (pending && pending.driver === "unicore"))
+    return html`<${UnicoreReceiver} data=${data} position=${position} stationID=${stationID} pending=${pending} setPending=${setPending}
+      err=${err} setErr=${setErr} busy=${busy} settle=${settle} reload=${load}/>`;
   const sys = data && data.system;
   const locked = !!pending || !!busy;
   return html`<div class="receiver">
@@ -1803,6 +1806,186 @@ function Receiver({ position, stationID }) {
       <${SignalToggles} data=${data} locked=${locked} onApply=${apply}/>
       <${RawKeys} data=${data} locked=${locked} onApply=${apply}/>
     ` : null}
+  </div>`;
+}
+
+/* ---------------------------------------------- receiver: Unicore (UM9xx) */
+/* The Unicore receiver is driven by text commands, so the page shows what the
+   commands report (version, base mode, outputs, configuration, masks) and a
+   console for everything else. Changes follow the same Keep / auto-revert rule
+   as the u-blox page; Keep is SAVECONFIG. */
+const UNICORE_HELP = [
+  ['VERSIONA', 'Model, firmware and serial number'],
+  ['CONFIG', 'Every configuration line'],
+  ['MODE', 'Base or rover mode and the station ID'],
+  ['UNILOGLIST', 'Active log outputs: message, port, rate'],
+  ['MASK', 'Elevation and constellation masks'],
+  ['BESTNAVA', 'One position and velocity solution'],
+  ['SATSINFOA', 'Satellites in view, one shot'],
+  ['BASEPOSA', 'Position the base is broadcasting'],
+  ['RTCM1077 COM1 1', 'Start an output (message, port, seconds)'],
+  ['UNLOG COM1 RTCM1077', 'Stop one output'],
+  ['CONFIG PPS DISABLE', 'Change a configuration line'],
+  ['MASK GPS', 'Stop tracking a constellation'],
+  ['UNMASK GPS', 'Track it again'],
+  ['SAVECONFIG', 'Save the running configuration to flash'],
+];
+
+function UnicorePending({ pending, onSettle, onExpired }) {
+  const [left, setLeft] = useState(0);
+  useEffect(() => {
+    const tick = () => setLeft(Math.max(0, Math.round((new Date(pending.revert_at) - Date.now()) / 1000)));
+    tick(); const i = setInterval(tick, 1000); return () => clearInterval(i);
+  }, [pending.revert_at]);
+  useEffect(() => {
+    if (left !== 0) return;
+    const i = setTimeout(onExpired, 4000); return () => clearTimeout(i);
+  }, [left === 0]);
+  const cs = pending.changes || [];
+  return html`<div class="card receiver-pending">
+    <div class="card-title"><h2>${t('Change pending')}${pending.label ? ' · ' + t(pending.label) : ''}</h2>
+      <span class=${'pill ' + (left > 15 ? 'warn' : 'bad')}>${left ? t('auto-revert in {n}s',{n:left}) : t('reverting…')}</span></div>
+    <p>${t('The receiver accepted the command and the configuration was read back. It is live but not saved. Check the live stream and rovers, then keep or revert. Doing nothing reverts at {t}.',{t:fmtDateTime(pending.revert_at)})}</p>
+    ${cs.length ? html`<div class="tbl-scroll"><table class="table table-vcenter"><thead><tr><th>${t("Item")}</th><th>${t("Before")}</th><th>${t("Now")}</th></tr></thead><tbody>
+      ${cs.map(c => html`<tr key=${c.key}><td><span class="muted">${c.kind}</span> <span class="mono">${c.name}</span></td>
+        <td class="mono">${c.old_display}</td><td class="mono">${c.display}</td></tr>`)}
+    </tbody></table></div>` : html`<p class="muted">${t("The command was accepted but the configuration read back unchanged.")}</p>`}
+    <div class="form-actions">
+      <button class="btn act" onClick=${() => onSettle(true)}>${t("Keep and save (SAVECONFIG)")}</button>
+      <button class="btn act danger" onClick=${() => onSettle(false)}>${t("Revert now")}</button>
+    </div>
+  </div>`;
+}
+
+function UnicoreConsole({ locked, onPending, onSaved }) {
+  const [lines, setLines] = useState([{k:'info', s:t('Type a command. Changes are verified, then wait for Keep or revert by themselves; dangerous commands ask first.')}]);
+  const [cmd, setCmd] = useState('');
+  const [busy, setBusy] = useState(false);
+  const hist = useRef([]);
+  const at = useRef(-1);
+  const box = useRef(null);
+  useEffect(() => { if (box.current) box.current.scrollTop = box.current.scrollHeight; }, [lines]);
+  const add = (...l) => setLines(old => old.concat(l).slice(-400));
+  const post = (command, confirmed) => api('/api/receiver/console', {method:'POST',
+    headers:{'Content-Type':'application/json'}, body:JSON.stringify({command, confirm:confirmed})});
+  const run = async command => {
+    add({k:'cmd', s:command});
+    setBusy(true);
+    try {
+      let r;
+      try { r = await post(command, false); }
+      catch (x) {
+        if (x.body && x.body.dangerous && confirm(x.body.error + '\n\n' + t('Send this command anyway?') +
+            (x.body.revertable ? '\n' + t('It will wait for Keep and revert by itself.') : '\n' + t('It cannot be reverted automatically.')))) {
+          r = await post(command, true);
+        } else throw x;
+      }
+      if (r.text) add({k:r.ok === false ? 'err' : 'out', s:r.text});
+      if (r.changes) { add({k:'info', s:t('Applied and read back. Keep or revert in the box above; otherwise it reverts at {t}.',{t:fmtDateTime(r.revert_at)})}); onPending(r); }
+      else if (r.ok === false) add({k:'err', s:r.acked ? t('The receiver rejected the command: {s}',{s:r.status}) : t('The receiver did not acknowledge the command.')});
+      else if (r.class !== 'query') { add({k:'info', s:t('Done.')}); onSaved(); }
+    } catch (x) {
+      if (x.body && x.body.text) add({k:'err', s:x.body.text});
+      add({k:'err', s:x.message || t('Command failed')});
+    }
+    setBusy(false);
+  };
+  const submit = e => {
+    e.preventDefault();
+    const c = cmd.trim();
+    if (!c || busy || locked) return;
+    if (hist.current[hist.current.length - 1] !== c) hist.current.push(c);
+    at.current = -1; setCmd(''); run(c);
+  };
+  const key = e => {
+    const h = hist.current;
+    if (e.key === 'ArrowUp' && h.length) {
+      e.preventDefault(); at.current = at.current < 0 ? h.length - 1 : Math.max(0, at.current - 1); setCmd(h[at.current]);
+    } else if (e.key === 'ArrowDown' && at.current >= 0) {
+      e.preventDefault(); at.current += 1;
+      if (at.current >= h.length) { at.current = -1; setCmd(''); } else setCmd(h[at.current]);
+    }
+  };
+  return html`<div class="card settings-section uni-console-card"><div class="card-title"><h2>${t("Console")}</h2>
+      <button class="btn act" onClick=${() => setLines([])}>${t("Clear")}</button></div>
+    <div class="uni-console" ref=${box} role="log" aria-live="polite">
+      ${lines.map((l, i) => html`<pre key=${i} class=${'uni-line ' + l.k}>${l.k === 'cmd' ? '> ' + l.s : l.s}</pre>`)}
+    </div>
+    <form class="uni-input" onSubmit=${submit}>
+      <span class="uni-prompt mono">${">"}</span>
+      <input class="form-control mono" value=${cmd} onInput=${e => setCmd(e.target.value)} onKeyDown=${key}
+        placeholder=${locked ? t('A change is pending: keep or revert it first') : t('Command, e.g. VERSIONA')}
+        disabled=${busy || locked} autocomplete="off" autocapitalize="off" spellcheck="false" aria-label=${t("Receiver command")}/>
+      <button class="btn act" type="submit" disabled=${busy || locked || !cmd.trim()}>${t("Send")}</button>
+    </form>
+    <details class="uni-help"><summary>${t("Common commands")}</summary>
+      <table class="table table-vcenter"><tbody>
+        ${UNICORE_HELP.map(([c, d]) => html`<tr key=${c}><td><a href="#" class="mono" onClick=${e => { e.preventDefault(); setCmd(c); }}>${c}</a></td><td class="muted">${t(d)}</td></tr>`)}
+      </tbody></table>
+      <p class="muted">${t("Firmware upgrade commands are refused. FRESET, RESET, UNLOG without a message, MODE ROVER, a fixed MODE BASE position and CONFIG COM1 ask for confirmation because they can take the station off the air.")}</p>
+    </details>
+  </div>`;
+}
+
+function UnicoreOutputs({ outputs, locked, onRun }) {
+  const [f, setF] = useState({message:'', port:'COM1', rate:'1'});
+  const add = e => {
+    e.preventDefault();
+    const m = f.message.trim().toUpperCase(), r = String(f.rate).trim();
+    if (!/^[A-Z0-9]+$/.test(m) || !r) return;
+    onRun(m + ' ' + f.port + ' ' + r);
+  };
+  return html`<div class="card settings-section"><h2>${t("Active outputs")}</h2>
+    <p class="muted">${t("Rate is the interval in seconds between messages on a port. Stopping or starting an output is verified, then waits for Keep.")}</p>
+    <div class="tbl-scroll msg-rates"><table class="table table-vcenter"><thead><tr><th>${t("Message")}</th><th>${t("Port")}</th><th>${t("Rate")}</th><th></th></tr></thead><tbody>
+      ${outputs.map(o => html`<tr key=${o.message + o.port}><td class="mono">${o.message}</td><td class="mono">${o.port}</td><td class="mono">${o.rate || '—'}</td>
+        <td><button class="btn act" disabled=${locked} onClick=${() => { if (confirm(t('Stop {m} on {p}?',{m:o.message,p:o.port}))) onRun('UNLOG ' + o.port + ' ' + o.message); }}>${t("Stop")}</button></td></tr>`)}
+      ${outputs.length ? null : html`<tr><td colspan="4" class="muted">${t("No outputs are active.")}</td></tr>`}
+    </tbody></table></div>
+    <form onSubmit=${add}><div class="settings-fields">
+      <div><label>${t("Message")}</label><input class="form-control mono" placeholder="RTCM1077" value=${f.message} onInput=${e => setF({...f, message:e.target.value})}/></div>
+      <div><label>${t("Port")}</label><select class="form-select" value=${f.port} onChange=${e => setF({...f, port:e.target.value})}><option>COM1</option><option>COM2</option><option>COM3</option></select></div>
+      <div><label>${t("Rate (s)")}</label><input class="form-control mono" value=${f.rate} onInput=${e => setF({...f, rate:e.target.value})}/></div>
+    </div><div class="form-actions"><button class="btn act" type="submit" disabled=${locked || !f.message.trim()}>${t("Start output")}</button></div></form>
+  </div>`;
+}
+
+function UnicoreReceiver({ data, position, stationID, pending, setPending, err, setErr, busy, settle, reload }) {
+  const locked = !!pending || !!busy;
+  const m = (data && data.mode) || {};
+  const runFromPanel = async command => {
+    setErr('');
+    try { setPending(await api('/api/receiver/console', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({command})})); }
+    catch (x) { setErr((x.message || t('Receiver change failed')) + (x.body && x.body.text ? '\n' + x.body.text : '')); }
+  };
+  const modeText = m.role === 'BASE'
+    ? (m.kind === 'fixed' ? t('Base, fixed position') : m.kind === 'time' ? t('Base, self-optimizing (survey-in)') : t('Base'))
+    : (m.role || '—');
+  return html`<div class="receiver receiver-unicore">
+    ${err ? html`<div class="card error-card"><p class="err" style="white-space:pre-wrap">${err}</p></div>` : null}
+    ${pending ? html`<${UnicorePending} pending=${pending} onSettle=${settle} onExpired=${reload}/>` : null}
+    ${data && !pending ? html`<${BasePosition} position=${position} locked=${locked} onApplied=${setPending} onError=${setErr} driver="unicore"/>` : null}
+    ${data ? html`<div class="strip receiver-id">
+      ${readout(t('Board profile'), data.board_profile ? data.board_profile.name : '—')}
+      ${readout(t('Model'), data.model || '—')}${readout(t('Firmware'), data.firmware || '—')}
+      ${readout(t('Serial number'), data.serial || '—')}${readout(t('Part number'), data.pn || '—')}
+      ${readout(t('Authorization'), data.auth || '—')}${readout(t('Auth date'), data.auth_date || '—')}
+    </div>` : null}
+    ${data ? html`<div class="card settings-section"><h2>${t("Base mode")}</h2><div class="strip receiver-id">
+      ${readout(t('Mode'), modeText)}${readout(t('Station ID'), m.id || '—')}
+      ${m.kind === 'fixed' ? html`${readout(t('Latitude'), m.lat)}${readout(t('Longitude'), m.lon)}${readout(t('Height'), m.height)}` : null}
+      ${m.kind === 'time' ? html`${readout(t('Survey time (s)'), m.time_seconds || '—')}${readout(t('Distance (m)'), m.distance || '—')}` : null}
+    </div><p class="muted mono">${m.raw}</p></div>` : null}
+    ${data && !pending ? html`<${StationID} value=${stationID} locked=${locked} onApplied=${setPending} onError=${setErr}/>` : null}
+    <${UnicoreConsole} locked=${!!pending} onPending=${setPending} onSaved=${reload}/>
+    ${data ? html`<${UnicoreOutputs} outputs=${data.outputs || []} locked=${locked} onRun=${runFromPanel}/>
+      <div class="card settings-section"><h2>${t("Configuration")}</h2>
+        <div class="tbl-scroll"><table class="table table-vcenter"><tbody>
+          ${(data.config || []).map(c => html`<tr key=${c.name}><td class="muted mono">${c.name}</td><td class="mono">${c.line}</td></tr>`)}
+        </tbody></table></div></div>
+      <div class="card settings-section"><h2>${t("Masks")}</h2>
+        ${(data.masks || []).length ? html`<ul class="mono">${data.masks.map(x => html`<li key=${x}>${x}</li>`)}</ul>` : html`<p class="muted">${t("No masks are set.")}</p>`}
+      </div>` : null}
   </div>`;
 }
 
@@ -2358,6 +2541,7 @@ const PAGE_HELP = {
     ['Base position','Surveyed antenna reference point. Latitude/longitude and ellipsoidal height must come from one stated reference frame and survey epoch.'],
     ['ETRS89 vs WGS-84','ETRS89 is fixed to stable Europe while WGS-84 follows a global frame. Do not mix their coordinates at centimetre precision.'],
     ['Station ID','RTCM DF003 identifier. Receiver observation messages and PSGNSSB-generated station messages must always carry the same value.'],
+    ['Command console','Unicore receivers only. Queries run directly. A change is verified by reading the configuration back, then waits for Keep (SAVECONFIG) and reverts by itself if you do nothing, like every receiver change. Commands that can stop the corrections ask for confirmation, and firmware upgrade commands are always refused. Every command is recorded in the receiver audit trail.'],
     ['Map tile source','An XYZ raster tile template for the dashboard map. Empty means no map and no external origin is permitted by the page policy at all. Attribution is required when it is set.'],
     ['Display defaults','Selects which constellations are shown by default in Dashboard and Data History; unchecked systems begin hidden. It does not enable or disable signals in the receiver.'],
     ['Automatic diagnosis','Controls repeat diagnosis on the Diagnostics page and its interval in minutes.'],
