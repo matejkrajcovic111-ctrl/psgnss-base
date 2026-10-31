@@ -3,7 +3,9 @@ package rinex
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+	"time"
 )
 
 func ubxFrame(class, id byte, payload []byte) []byte {
@@ -41,5 +43,43 @@ func TestSniffEdgesSeesUpgradedLiveTail(t *testing.T) {
 	}
 	if !c.HasNavigation() {
 		t.Fatalf("edge scan missed message pair: %+v", c)
+	}
+}
+
+// rtcmFrame builds a minimal valid RTCM3 frame of the given message type. The
+// payload is zeros past the 12-bit type: enough to frame, and carrying no
+// coordinates.
+func rtcmFrame(msg int) []byte {
+	b := []byte{0xD3, 0x00, 0x04, byte(msg >> 4), byte(msg&0xF) << 4, 0, 0}
+	c := crc24q(b)
+	return append(b, byte(c>>16), byte(c>>8), byte(c))
+}
+
+func TestRTCMEphemerisCountsAsNavigation(t *testing.T) {
+	obs := classify(append(rtcmFrame(1077), rtcmFrame(1127)...))
+	if obs.HasNavigation() || obs.Ephemeris != 0 {
+		t.Fatalf("MSM-only RTCM must not promise navigation: %+v", obs)
+	}
+	um980 := classify(append(rtcmFrame(1077), rtcmFrame(1046)...))
+	if !um980.HasNavigation() || um980.Ephemeris != 1 {
+		t.Fatalf("RTCM with ephemeris must offer navigation: %+v", um980)
+	}
+	if um980.Format() != "rtcm3" {
+		t.Fatalf("format = %s, want rtcm3", um980.Format())
+	}
+}
+
+func TestWindowArgsKeepDateAndTimeSeparate(t *testing.T) {
+	start := time.Date(2026, 10, 31, 16, 0, 0, 0, time.UTC)
+	end := start.Add(time.Hour)
+	got := strings.Join(WindowArgs("rtcm3", start, end), "|")
+	want := "-ts|2026/10/31|16:00:00|-te|2026/10/31|17:00:00|-tr|2026/10/31|16:00:00"
+	if got != want {
+		t.Errorf("rtcm3 args = %s, want %s", got, want)
+	}
+	// UBX carries receiver time itself, so its arguments stay as they were.
+	got = strings.Join(WindowArgs("ubx", start, end), "|")
+	if strings.Contains(got, "-tr") {
+		t.Errorf("ubx args gained -tr: %s", got)
 	}
 }

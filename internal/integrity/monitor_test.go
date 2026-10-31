@@ -271,3 +271,45 @@ func TestSelectionMeasuresFromTheConvergedTail(t *testing.T) {
 		t.Errorf("minimum fixed run: %d epochs, quality %q", len(got), q)
 	}
 }
+
+// The UM980 emits no UBX. Its RTCM carries MSM7 and its own ephemeris, one
+// message per second per type, so the rover feed passes those, every
+// occurrence, and rtkrcv reads rtcm3.
+func TestIntegrityFeedForUnicoreCarriesMSM7AndEphemeris(t *testing.T) {
+	f, err := integrityFilterRTCM()
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now()
+	for _, typ := range []int{1077, 1087, 1097, 1107, 1117, 1127, 1019, 1020, 1042, 1045, 1046} {
+		fr := hub.Frame{Proto: hub.ProtoRTCM3, Type: typ}
+		if !f.Pass(fr, now) || !f.Pass(fr, now.Add(time.Millisecond)) {
+			t.Errorf("type %d was dropped or decimated", typ)
+		}
+	}
+	for _, typ := range []int{1005, 1074, 1084, 1124, 1230} {
+		if f.Pass(hub.Frame{Proto: hub.ProtoRTCM3, Type: typ}, now) {
+			t.Errorf("type %d should not reach rtkrcv", typ)
+		}
+	}
+	if f.Pass(hub.Frame{Proto: hub.ProtoUBX, Type: 0x0215}, now) {
+		t.Error("UBX passed the Unicore filter")
+	}
+}
+
+func TestRTKConfigPicksTheRoverFormatFromTheBoardProfile(t *testing.T) {
+	log := slog.New(slog.NewTextHandler(io.Discard, nil))
+	set := store.IntegritySettings{Host: "caster.example.org:2101", Mountpoint: "REF", Username: "operator"}
+	um := &config.Config{}
+	um.Receiver.Model = "UM980"
+	conf := New(nil, nil, um, nil, log).rtkConfig(set, "unused", "127.0.0.1:1", "/tmp/out.pos")
+	if !strings.Contains(conf, "inpstr1-format =rtcm3") {
+		t.Errorf("UM980 rover is not declared rtcm3:\n%s", conf)
+	}
+	x20 := &config.Config{}
+	x20.Receiver.Model = "ZED-X20P"
+	conf = New(nil, nil, x20, nil, log).rtkConfig(set, "unused", "127.0.0.1:1", "/tmp/out.pos")
+	if !strings.Contains(conf, "inpstr1-format =ubx") {
+		t.Errorf("ZED-X20P rover left ubx:\n%s", conf)
+	}
+}

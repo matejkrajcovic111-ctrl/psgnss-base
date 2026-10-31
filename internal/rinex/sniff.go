@@ -15,17 +15,24 @@ type Content struct {
 	Total      int64
 	RXMRawx    int64
 	RXMSfrbx   int64
+	// Ephemeris counts RTCM3 broadcast-ephemeris messages (1019, 1020, 1042,
+	// 1044, 1045, 1046). A receiver that emits them itself, like the UM980,
+	// puts observations and navigation data in the same RTCM file.
+	Ephemeris int64
 }
 
 // HasUBX reports whether the file carries UBX, which is what convbin needs to
 // produce observations and navigation data.
 func (c Content) HasUBX() bool { return c.UBXBytes > 0 }
 
-// HasNavigation reports whether the UBX stream contains both the broadcast
-// subframes and a timed raw-measurement epoch. RTKLIB cannot date SFRBX-only
-// data, so merely finding UBX framing is not enough to promise a RINEX NAV
-// download.
-func (c Content) HasNavigation() bool { return c.RXMRawx > 0 && c.RXMSfrbx > 0 }
+// HasNavigation reports whether the file can yield RINEX navigation data: the
+// UBX stream contains both the broadcast subframes and a timed raw-measurement
+// epoch (RTKLIB cannot date SFRBX-only data, so merely finding UBX framing is
+// not enough to promise a RINEX NAV download), or the RTCM stream carries the
+// receiver's own ephemeris messages.
+func (c Content) HasNavigation() bool {
+	return (c.RXMRawx > 0 && c.RXMSfrbx > 0) || c.Ephemeris > 0
+}
 
 // Format returns the convbin -r argument for this file.
 func (c Content) Format() string {
@@ -108,6 +115,7 @@ func SniffEdges(path string, limit int64) (Content, error) {
 	head.Total += tail.Total
 	head.RXMRawx += tail.RXMRawx
 	head.RXMSfrbx += tail.RXMSfrbx
+	head.Ephemeris += tail.Ephemeris
 	return head, nil
 }
 
@@ -122,6 +130,9 @@ func classify(b []byte) Content {
 			if i+total <= len(b) && crc24q(b[i:i+3+ln]) ==
 				uint32(b[i+3+ln])<<16|uint32(b[i+4+ln])<<8|uint32(b[i+5+ln]) {
 				c.RTCMBytes += int64(total)
+				if isEphemeris(int(b[i+3])<<4 | int(b[i+4])>>4) {
+					c.Ephemeris++
+				}
 				i += total
 				continue
 			}
@@ -152,6 +163,14 @@ func classify(b []byte) Content {
 	}
 	c.Total = c.UBXBytes + c.RTCMBytes + c.OtherBytes
 	return c
+}
+
+func isEphemeris(msg int) bool {
+	switch msg {
+	case 1019, 1020, 1042, 1044, 1045, 1046:
+		return true
+	}
+	return false
 }
 
 var crc24qTable = func() [256]uint32 {

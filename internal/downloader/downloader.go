@@ -98,6 +98,11 @@ type sniffEntry struct {
 	size   int64
 	mod    int64
 	hasNav bool
+	// hasEph is set when the file carries RTCM ephemeris messages, i.e. its own
+	// navigation data (a UM980 archive), as opposed to UBX subframes.
+	hasEph bool
+	// format is the convbin -r argument for the file's content.
+	format string
 }
 
 func New(o Options) *Downloader {
@@ -225,6 +230,11 @@ func (d *Downloader) Available() ([]Day, error) {
 // A completed archive file never changes, so this is read once per file for
 // the life of the process instead of on every calendar load.
 func (d *Downloader) fileHasNavigation(path string, fi os.FileInfo) bool {
+	return d.classifyFile(path, fi).hasNav
+}
+
+// classifyFile sniffs both ends of a file once and caches the answer.
+func (d *Downloader) classifyFile(path string, fi os.FileInfo) sniffEntry {
 	key := path
 	size, mod := fi.Size(), fi.ModTime().Unix()
 
@@ -232,20 +242,24 @@ func (d *Downloader) fileHasNavigation(path string, fi os.FileInfo) bool {
 	e, ok := d.sniffed[key]
 	d.smu.RUnlock()
 	if ok && e.size == size && e.mod == mod {
-		return e.hasNav
+		return e
 	}
 
 	// Read both ends so a growing file is recognized immediately after an
 	// archive-filter upgrade, without rescanning the whole file over SMB.
 	c, err := rinex.SniffEdges(path, 64<<10)
-	has := true // on error, assume usable rather than hiding a day
+	ne := sniffEntry{size: size, mod: mod,
+		hasNav: true, // on error, assume usable rather than hiding a day
+	}
 	if err == nil {
-		has = c.HasNavigation()
+		ne.hasNav = c.HasNavigation()
+		ne.hasEph = c.Ephemeris > 0
+		ne.format = c.Format()
 	}
 	d.smu.Lock()
-	d.sniffed[key] = sniffEntry{size: size, mod: mod, hasNav: has}
+	d.sniffed[key] = ne
 	d.smu.Unlock()
-	return has
+	return ne
 }
 
 func allDigits(s string) bool {
@@ -314,6 +328,10 @@ func (d *Downloader) kindFilesForWindow(date string, win Window, kind string) []
 type conversionInput struct {
 	files []string
 	want  Outputs
+	// optional marks a source that may legitimately yield nothing, such as an
+	// RTCM file whose ephemeris starts after the requested window. Its empty
+	// result is not reported as a problem.
+	optional bool
 }
 
 // inputsForWindow routes each requested product to its authoritative source.
@@ -335,11 +353,63 @@ func (d *Downloader) inputsForWindow(date string, win Window, out Outputs) []con
 		if len(files) == 0 {
 			files = d.kindFilesForWindow(date, win, "ubx")
 		}
+		// A receiver that emits RTCM ephemeris (UM980) records it in the RTCM
+		// archive itself, so those files are their own navigation source. The
+		// UBX navigation archive is then only needed for the part of a window
+		// recorded before the swap; a nav file with no usable UBX in it (the
+		// swap day's tail, or a day the archive was never written) is skipped
+		// when RTCM ephemeris can stand in for it.
+		eph := d.ephemerisFiles(d.kindFilesForWindow(date, win, "rtcm"))
+		if len(eph) > 0 {
+			var usable []string
+			for _, f := range files {
+				if fi, err := os.Stat(f); err != nil || d.classifyFile(f, fi).hasNav {
+					usable = append(usable, f)
+				}
+			}
+			files = usable
+		}
 		if len(files) > 0 {
 			inputs = append(inputs, conversionInput{files: files, want: Outputs{Nav: true}})
 		}
+		if len(eph) > 0 {
+			inputs = append(inputs, conversionInput{files: eph, want: Outputs{Nav: true},
+				optional: len(files) > 0})
+		}
 	}
 	return inputs
+}
+
+// runsByFormat splits files into consecutive runs that convbin reads with the
+// same -r format.
+func (d *Downloader) runsByFormat(files []string) [][]string {
+	var runs [][]string
+	last := ""
+	for _, f := range files {
+		format := "ubx"
+		if fi, err := os.Stat(f); err == nil {
+			if e := d.classifyFile(f, fi); e.format != "" {
+				format = e.format
+			}
+		}
+		if len(runs) == 0 || format != last {
+			runs = append(runs, nil)
+		}
+		runs[len(runs)-1] = append(runs[len(runs)-1], f)
+		last = format
+	}
+	return runs
+}
+
+// ephemerisFiles keeps the RTCM files that carry the receiver's own ephemeris.
+func (d *Downloader) ephemerisFiles(files []string) []string {
+	var out []string
+	for _, f := range files {
+		if fi, err := os.Stat(f); err == nil && d.classifyFile(f, fi).hasEph {
+			out = append(out, f)
+		}
+	}
+	return out
 }
 
 // Result describes a completed conversion.
@@ -490,17 +560,29 @@ func (d *Downloader) Process(ctx context.Context, dateStr string, job *Job,
 	// into one byte stream is both slower and invalid input to convbin.
 	for i := range inputs {
 		if win.CrossesMidnight() && len(inputs[i].files) > 1 {
-			joined := filepath.Join(tmp, fmt.Sprintf("joined-%02d.bin", i))
-			if err := concat(joined, inputs[i].files); err != nil {
-				return nil, fmt.Errorf("joining archive files for the selected range: %w", err)
+			// Only files of the same format are joined: a window spanning the
+			// UBX-to-RTCM change cannot be fed to convbin as one stream. The
+			// groups convert separately and come out as numbered parts.
+			var files []string
+			for g, run := range d.runsByFormat(inputs[i].files) {
+				if len(run) == 1 {
+					files = append(files, run...)
+					continue
+				}
+				joined := filepath.Join(tmp, fmt.Sprintf("joined-%02d-%d.bin", i, g))
+				if err := concat(joined, run); err != nil {
+					return nil, fmt.Errorf("joining archive files for the selected range: %w", err)
+				}
+				files = append(files, joined)
 			}
-			inputs[i].files = []string{joined}
+			inputs[i].files = files
 		}
 	}
 	var tasks []conversionInput
 	for _, input := range inputs {
 		for _, raw := range input.files {
-			tasks = append(tasks, conversionInput{files: []string{raw}, want: input.want})
+			tasks = append(tasks, conversionInput{files: []string{raw}, want: input.want,
+				optional: input.optional})
 		}
 	}
 
@@ -564,7 +646,7 @@ func (d *Downloader) Process(ctx context.Context, dateStr string, job *Job,
 		return nil, fmt.Errorf("observation conversion produced no data for %s", dateStr)
 	}
 	if out.Nav && !hasNavigationOutput(produced) {
-		return nil, fmt.Errorf("navigation conversion produced no data for %s; the recorded NAV source may lack RXM-RAWX timing data", dateStr)
+		return nil, fmt.Errorf("navigation conversion produced no data for %s; the recorded NAV source may lack RXM-RAWX timing data or RTCM ephemeris", dateStr)
 	}
 
 	zipName := stemBase + ".zip"
@@ -657,7 +739,7 @@ func (d *Downloader) convert(ctx context.Context, raw string, start, end time.Ti
 	format := "ubx"
 	if c, err := rinex.Sniff(raw, 1<<20); err == nil {
 		format = c.Format()
-		if !c.HasUBX() && want.Nav {
+		if !c.HasNavigation() && want.Nav {
 			d.o.Log.Warn("navigation data requested but this file has no ephemeris source",
 				"file", filepath.Base(raw), "content", c.String())
 		}
@@ -673,17 +755,15 @@ func (d *Downloader) convert(ctx context.Context, raw string, start, end time.Ti
 		"-r", format,
 		"-v", version,
 		"-f", fmt.Sprint(frequencies),
-		// RTKLIB reads the date and the time as two separate arguments. Passing
-		// "2026/09/14 09:00:00" as one argument makes convbin consume the next
-		// flag as the time, and the range is silently ignored -- the whole file
-		// is converted instead. The original downloader had this bug; it was
-		// invisible there because it only ever requested full days.
-		"-ts", start.Format("2006/01/02"), start.Format("15:04:05"),
-		"-te", end.Format("2006/01/02"), end.Format("15:04:05"),
+	}
+	// Date and time are separate arguments, and RTCM3 also needs -tr; see
+	// rinex.WindowArgs. The original downloader got this wrong and it was
+	// invisible there because it only ever requested full days.
+	args = append(args, rinex.WindowArgs(format, start, end)...)
+	args = append(args,
 		// Doppler, SNR, and iono/time/leap-second records in the nav header,
 		// exactly as the original invoked it.
-		"-od", "-os", "-oi", "-ot", "-ol",
-	}
+		"-od", "-os", "-oi", "-ot", "-ol")
 	// Only ask for what was requested: convbin writes every output it is given
 	// a path for, so omitting the flag is how a product is excluded.
 	if want.Obs {

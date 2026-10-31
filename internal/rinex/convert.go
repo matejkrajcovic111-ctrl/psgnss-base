@@ -35,6 +35,29 @@ type Result struct {
 	Stderr   string
 }
 
+// WindowArgs returns convbin's time-window arguments.
+//
+// Date and time must be separate arguments: RTKLIB reads them as two. Passing
+// "2026/09/14 09:00:00" as one makes convbin consume the next flag as the time,
+// and the range is silently ignored -- the whole file is converted instead.
+//
+// RTCM3 messages carry only a week-less time of week (or a GPS week modulo
+// 1024), so convbin needs an approximate time to resolve the week. The window
+// start is within a day of every message in the file, which is all it asks.
+// The same two-argument rule applies to -tr.
+func WindowArgs(format string, start, end time.Time) []string {
+	const dateF, timeF = "2006/01/02", "15:04:05"
+	s, e := start.UTC(), end.UTC()
+	args := []string{
+		"-ts", s.Format(dateF), s.Format(timeF),
+		"-te", e.Format(dateF), e.Format(timeF),
+	}
+	if format == "rtcm3" {
+		args = append(args, "-tr", s.Format(dateF), s.Format(timeF))
+	}
+	return args
+}
+
 // Convert turns one raw archive file into RINEX observation and navigation
 // files covering [start, end].
 func Convert(ctx context.Context, raw string, start, end time.Time, outDir, stem string,
@@ -64,11 +87,11 @@ func Convert(ctx context.Context, raw string, start, end time.Time, outDir, stem
 	if err != nil {
 		return nil, fmt.Errorf("sniff %s: %w", raw, err)
 	}
-	if !content.HasUBX() {
-		// RTCM carries observations but no ephemeris, so a navigation file
-		// cannot be produced from it. Say so rather than emitting a silently
-		// incomplete result.
-		o.Log.Warn("raw file contains no UBX; navigation data will be unavailable",
+	if !content.HasNavigation() {
+		// An RTCM stream without ephemeris messages carries observations only,
+		// so a navigation file cannot be produced from it. Say so rather than
+		// emitting a silently incomplete result.
+		o.Log.Warn("raw file contains no ephemeris; navigation data will be unavailable",
 			"file", filepath.Base(raw), "content", content.String())
 	}
 	format := content.Format()
@@ -83,13 +106,9 @@ func Convert(ctx context.Context, raw string, start, end time.Time, outDir, stem
 		"-r", format,
 		"-v", o.Version,
 		"-f", fmt.Sprint(o.Frequencies),
-		// Date and time must be separate arguments; see downloader.convert.
-		"-ts", start.UTC().Format("2006/01/02"), start.UTC().Format("15:04:05"),
-		"-te", end.UTC().Format("2006/01/02"), end.UTC().Format("15:04:05"),
-		"-o", obs,
-		"-n", nav,
-		raw,
 	}
+	args = append(args, WindowArgs(format, start, end)...)
+	args = append(args, "-o", obs, "-n", nav, raw)
 
 	cctx, cancel := context.WithTimeout(ctx, o.Timeout)
 	defer cancel()

@@ -168,6 +168,9 @@ version      = "3.04"
 #   -f 4  + Galileo E6, BeiDou B3I                             <- complete
 #   -f 5+ identical output to -f 4
 #
+# On a UM980 (RTCM3), -f 4 still drops BeiDou B1C; use 5 (the daemon raises
+# a lower value itself).
+#
 # The predecessor tool hardcoded 2, an F9P-era default. On this triple-band
 # receiver that dropped L5, E6 and B2a AND lost BeiDou altogether.
 frequencies  = 4

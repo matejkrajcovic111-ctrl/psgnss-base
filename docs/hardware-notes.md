@@ -86,6 +86,30 @@ whole days.
 progress as a timestamp on stderr. PSGNSS computes progress monotonically,
 because a bar that jumps backwards is worse than one that stalls.
 
+### UM980 (RTCM3 with ephemeris)
+
+The UM980 emits no UBX. Its RTCM archive holds MSM7/MSM4 observations and the
+receiver's own ephemeris (1019/1020/1042/1044/1045/1046), so one file gives both
+`.obs` and `.nav` with `convbin -r rtcm3`. The format is chosen per file from
+its content, so pre-swap UBX files still convert as `ubx`.
+
+- **`-tr` is needed for RTCM3** (week resolution) and, like `-ts`/`-te`, takes
+  date and time as two arguments. PSGNSS passes the window start.
+- **Use `-f 5` on a UM980.** Measured on RTCM3 data: `-f 3` loses E6 and B3I,
+  `-f 4` loses BeiDou B1C (C1P/L1P, which the UM980 tracks), `-f 5` keeps
+  everything and `-f 6` adds nothing. The daemon raises a configured value below
+  5 to 5 for a Unicore board. Observation types at `-f 5`: GPS C1C C2W C2L C2X
+  C5Q; GLONASS C1C C2C; Galileo C1C C7Q C5Q C6B C6C; SBAS C1C; BeiDou C2I C7D
+  C5P C6I C1P (each with L, D and S).
+- The RTCM ephemeris carries no ionosphere or UTC parameters, so the `.nav`
+  header has no `ION ALPHA`/`TIME SYSTEM CORR` lines.
+- **The swap day (2026-10-31)** has X20P observations (RTCM only, no ephemeris)
+  until about 16:14 UTC and UM980 data after about 16:35. Observations convert
+  from the one file. Navigation before the swap comes from the UBX nav archive
+  and after it from the RTCM file; a window spanning both yields two numbered
+  `.nav` parts rather than one merged file. A window across midnight that joins
+  a UBX-era file to an RTCM-era one is converted per format, also as parts.
+
 For the version, use `convbin --version`. With no arguments it just prints "no
 input file". `psgnssd --dependencies` reports whatever is installed.
 
