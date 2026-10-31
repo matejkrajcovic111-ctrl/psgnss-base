@@ -15,6 +15,9 @@ import (
 type Filter struct {
 	// proto restricts by protocol; ProtoUnknown means any.
 	proto Proto
+	// also widens proto to further protocols, for consumers that read both a
+	// receiver's binary and its text output.
+	also []Proto
 	// allow maps message type to its minimum spacing. A nil map means pass all.
 	allow map[int]time.Duration
 	last  map[int]time.Time
@@ -29,8 +32,8 @@ type FilterSpec struct {
 // NewPassthrough builds a filter that passes every frame untouched.
 func NewPassthrough() *Filter { return &Filter{} }
 
-// NewProtoFilter passes every frame of one protocol.
-func NewProtoFilter(p Proto) *Filter { return &Filter{proto: p} }
+// NewProtoFilter passes every frame of the given protocols.
+func NewProtoFilter(p Proto, more ...Proto) *Filter { return &Filter{proto: p, also: more} }
 
 // NewFilter builds a message-type filter with per-type decimation.
 func NewFilter(p Proto, specs []FilterSpec) (*Filter, error) {
@@ -90,6 +93,8 @@ func ParseProto(s string) (Proto, error) {
 		return ProtoRTCM3, nil
 	case "nmea":
 		return ProtoNMEA, nil
+	case "unicore":
+		return ProtoUnicore, nil
 	}
 	return ProtoUnknown, fmt.Errorf("unknown filter protocol %q", s)
 }
@@ -97,7 +102,7 @@ func ParseProto(s string) (Proto, error) {
 // Pass reports whether the frame should be forwarded. now is passed in rather
 // than read from the clock so decimation is testable.
 func (f *Filter) Pass(fr Frame, now time.Time) bool {
-	if f.proto != ProtoUnknown && fr.Proto != f.proto {
+	if f.proto != ProtoUnknown && fr.Proto != f.proto && !f.alsoPasses(fr.Proto) {
 		return false
 	}
 	if f.allow == nil {
@@ -118,6 +123,15 @@ func (f *Filter) Pass(fr Frame, now time.Time) bool {
 	}
 	f.last[fr.Type] = now
 	return true
+}
+
+func (f *Filter) alsoPasses(p Proto) bool {
+	for _, q := range f.also {
+		if p == q {
+			return true
+		}
+	}
+	return false
 }
 
 // Types returns the selected message types, for sourcetable generation.

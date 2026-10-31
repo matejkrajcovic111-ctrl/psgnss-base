@@ -47,7 +47,9 @@ type Stats struct {
 	UBXFrames    atomic.Int64
 	RTCMFrames   atomic.Int64
 	NMEAFrames   atomic.Int64
-	LastFrameAt  atomic.Int64 // unix nanos
+	// UnicoreFrames counts Unicore binary and text logs together.
+	UnicoreFrames atomic.Int64
+	LastFrameAt   atomic.Int64 // unix nanos
 	// LastDropAt marks when unframed bytes were last discarded. Attaching to a
 	// live stream always costs a partial frame at startup, so the total alone
 	// cannot distinguish a healthy stream from a degrading one -- when it last
@@ -113,11 +115,16 @@ func New(o Options) (*Hub, error) {
 	}, nil
 }
 
-// Control borrows the production serial stream for one serialized UBX
-// request/response conversation.  The returned closer must be closed.  It is
-// deliberately unavailable for TCP/file inputs: those are verification feeds,
-// never hardware control paths.
-func (h *Hub) Control() (io.ReadWriteCloser, error) {
+// Control borrows the production serial stream for one serialized
+// request/response conversation. It reads the protocols given, UBX when none
+// are: a u-blox session needs UBX, a Unicore session needs NMEA (command
+// acknowledgements) and Unicore text. The returned closer must be closed. It
+// is deliberately unavailable for TCP/file inputs: those are verification
+// feeds, never hardware control paths.
+func (h *Hub) Control(protos ...Proto) (io.ReadWriteCloser, error) {
+	if len(protos) == 0 {
+		protos = []Proto{ProtoUBX}
+	}
 	if !h.serial {
 		return nil, errors.New("receiver control is only available with a serial hub input")
 	}
@@ -129,7 +136,7 @@ func (h *Hub) Control() (io.ReadWriteCloser, error) {
 		h.controlMu.Unlock()
 		return nil, errors.New("receiver serial stream is not connected")
 	}
-	return &controlPipe{hub: h, sub: h.Subscribe("receiver-control", NewProtoFilter(ProtoUBX), 512)}, nil
+	return &controlPipe{hub: h, sub: h.Subscribe("receiver-control", NewProtoFilter(protos[0], protos[1:]...), 512)}, nil
 }
 
 type controlPipe struct {
@@ -322,6 +329,8 @@ func (h *Hub) dispatch(f Frame) {
 		h.Stats.RTCMFrames.Add(1)
 	case ProtoNMEA:
 		h.Stats.NMEAFrames.Add(1)
+	case ProtoUnicore, ProtoUnicoreText:
+		h.Stats.UnicoreFrames.Add(1)
 	}
 
 	h.mu.RLock()

@@ -10,8 +10,9 @@ import (
 )
 
 const (
-	DriverUBXVal = "ubx-valget-valset"
-	DriverStub   = "not-implemented"
+	DriverUBXVal  = "ubx-valget-valset"
+	DriverUnicore = "unicore-cli"
+	DriverStub    = "not-implemented"
 )
 
 // Profile is one supported or deliberately stubbed receiver family.
@@ -25,7 +26,14 @@ type Profile struct {
 	Implemented bool     `json:"implemented"`
 	FormFactors []string `json:"form_factors"`
 	Note        string   `json:"note"`
+	// NativeEphemeris means the receiver emits RTCM ephemeris itself, so the
+	// caster forwards it rather than synthesising it from UBX subframes.
+	NativeEphemeris bool `json:"native_ephemeris"`
 }
+
+// UBX and Unicore report whether the profile is driven over that protocol.
+func (p Profile) UBX() bool     { return p.Implemented && p.Driver == DriverUBXVal }
+func (p Profile) Unicore() bool { return p.Implemented && p.Driver == DriverUnicore }
 
 var profiles = []Profile{
 	{ID: "simplertk4-optimum", Name: "simpleRTK4 Optimum", Receiver: "ZED-X20P",
@@ -41,9 +49,10 @@ var profiles = []Profile{
 		FormFactors: []string{"standard", "Micro", "mPCIe"},
 		Note:        "Profile stub; Septentrio control and telemetry drivers are not implemented."},
 	{ID: "simplertk3b-budget", Name: "simpleRTK3B Budget", Receiver: "UM980",
-		Vendor: "ArduSimple / Unicore", Protocol: "Unicore binary / CLI", Driver: DriverStub,
-		FormFactors: []string{"standard"},
-		Note:        "Profile stub; Unicore control and telemetry drivers are not implemented."},
+		Vendor: "ArduSimple / Unicore", Protocol: "Unicore binary / CLI", Driver: DriverUnicore, Implemented: true,
+		FormFactors: []string{"standard"}, NativeEphemeris: true,
+		Note: "Command console, telemetry, fixed-base and message-output support. " +
+			"Verified on firmware R4.10Build20739."},
 }
 
 // All returns an independent copy safe for JSON responses and callers.

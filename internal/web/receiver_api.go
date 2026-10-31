@@ -60,7 +60,7 @@ func (s *Server) receiverSession() (*receiver.Session, io.Closer, error) {
 		if s.Hub == nil {
 			return nil, nil, errors.New("receiver control is unavailable without a hub")
 		}
-		open = s.Hub.Control
+		open = func() (io.ReadWriteCloser, error) { return s.Hub.Control() }
 	}
 	p, err := open()
 	if err != nil {
