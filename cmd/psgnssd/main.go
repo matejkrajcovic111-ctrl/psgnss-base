@@ -367,7 +367,7 @@ func run(cfgPath string, checkOnly bool) error {
 	coll := telemetry.NewCollector(db,
 		time.Duration(cfg.Telemetry.FineWindowMin)*time.Minute,
 		cfg.Telemetry.CoarseInterval, cfg.Telemetry.RetentionDays, slog.Default())
-	tsub := h.Subscribe("telemetry", hub.NewProtoFilter(hub.ProtoUBX), 512)
+	tsub := h.Subscribe("telemetry", hub.NewProtoFilter(hub.ProtoUBX, hub.ProtoUnicore), 512)
 	wg.Add(1)
 	go func() {
 		defer wg.Done()

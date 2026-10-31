@@ -29,6 +29,7 @@ import (
 	"time"
 
 	"github.com/psgnss/psgnss-base/internal/hub"
+	"github.com/psgnss/psgnss-base/internal/telemetry"
 )
 
 // chronySampleMagic identifies a SOCK refclock sample ("SOCK" little-endian).
@@ -55,7 +56,8 @@ type Options struct {
 	MaxAccuracy time.Duration
 }
 
-// Sender reads NAV-PVT from the hub and offers each fix to chrony.
+// Sender reads NAV-PVT (u-blox) or BESTNAVB (Unicore) from the hub and offers
+// each fix to chrony.
 type Sender struct {
 	opt Options
 	h   *hub.Hub
@@ -112,7 +114,7 @@ func (s *Sender) Run(ctx context.Context) {
 	if s.opt.Socket == "" {
 		return
 	}
-	sub := s.h.Subscribe("timesync", hub.NewProtoFilter(hub.ProtoUBX), 64)
+	sub := s.h.Subscribe("timesync", hub.NewProtoFilter(hub.ProtoUBX, hub.ProtoUnicore), 64)
 	defer sub.Close()
 
 	var conn net.Conn
@@ -136,7 +138,11 @@ func (s *Sender) Run(ctx context.Context) {
 			// Local time is read first: it must be as close as possible to the
 			// moment the frame arrived, not to the moment parsing finished.
 			now := time.Now()
-			fix, ok := parseNavPVTTime(frame)
+			parse := parseNavPVTTime
+			if telemetry.IsUnicoreFrame(frame) {
+				parse = parseBestNavTime
+			}
+			fix, ok := parse(frame)
 			if !ok {
 				continue
 			}
@@ -268,5 +274,27 @@ func parseNavPVTTime(frame []byte) (navTime, bool) {
 		utc:      t,
 		accuracy: time.Duration(binary.LittleEndian.Uint32(p[12:16])) * time.Nanosecond,
 		resolved: valid&0x07 == 0x07,
+	}, true
+}
+
+// parseBestNavTime pulls UTC time out of a framed Unicore BESTNAVB log.
+//
+// The header carries the epoch (GPS week and ms of week), the GPST-UTC leap
+// seconds, a time status (FINE = 160 once the receiver has solved time) and the
+// output delay: the log leaves the receiver that many ms after the epoch, so
+// the instant to compare with the local arrival time is epoch + delay. The
+// header has no accuracy estimate, so accuracy is left 0 and MaxAccuracy does
+// not apply; FINE is the receiver's own statement that time is solved. A leap
+// count of 0 would put the clock 18 s off, so it counts as unresolved, as does
+// any time status other than FINE or a reference time other than GPST.
+func parseBestNavTime(frame []byte) (navTime, bool) {
+	bn, err := telemetry.ParseBestNav(frame)
+	if err != nil {
+		return navTime{}, false
+	}
+	h := bn.Header
+	return navTime{
+		utc:      h.EpochUTC().Add(time.Duration(h.DelayMS) * time.Millisecond),
+		resolved: h.Fine() && h.LeapSec > 0,
 	}, true
 }

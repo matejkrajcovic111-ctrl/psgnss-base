@@ -2,6 +2,7 @@ package telemetry
 
 import (
 	"context"
+	"encoding/binary"
 	"log/slog"
 	"sync"
 	"time"
@@ -70,15 +71,18 @@ func (c *Collector) GPSTime() (leap int8, week uint16, tow float64, at time.Time
 	return c.leapSec, c.gpsWeek, c.gpsTOW, c.gpsAt
 }
 
-// Run consumes UBX frames until ctx is cancelled.
+// Run consumes UBX and Unicore frames until ctx is cancelled.
 //
-// frames carries whole UBX messages; NAV-SAT drives the skyplot and SNR, and
-// NAV-PVT supplies the fix type.
+// frames carries whole messages. For u-blox, NAV-SAT drives the skyplot and SNR,
+// and NAV-PVT supplies the fix type. For a Unicore receiver SATSINFO does the
+// jobs of NAV-SAT and NAV-SIG, BESTSAT says which satellites are used, and
+// BESTNAV supplies the fix type.
 func (c *Collector) Run(ctx context.Context, frames <-chan []byte) {
 	maint := time.NewTicker(10 * time.Minute)
 	defer maint.Stop()
 	var pending Epoch
 	var lastWrite time.Time
+	var used UsedSet // latest BESTSAT, for Unicore receivers
 
 	for {
 		select {
@@ -89,6 +93,10 @@ func (c *Collector) Run(ctx context.Context, frames <-chan []byte) {
 		case b, ok := <-frames:
 			if !ok {
 				return
+			}
+			if IsUnicoreFrame(b) {
+				c.unicore(b, &pending, &used, &lastWrite)
+				continue
 			}
 			if len(b) < 8 || b[0] != 0xB5 || b[1] != 0x62 {
 				continue
@@ -103,22 +111,7 @@ func (c *Collector) Run(ctx context.Context, frames <-chan []byte) {
 					continue
 				}
 				pending.Sats = sats
-				now := time.Now()
-				// One row per second at most; NAV-SAT arrives at 1 Hz but a
-				// burst after a reconnect should not multiply rows.
-				if now.Sub(lastWrite) >= time.Second {
-					c.mu.RLock()
-					signals := append([]Signal(nil), c.signals...)
-					c.mu.RUnlock()
-					if err := c.store.PutEpoch(now, sats, signals, pending.FixType); err != nil {
-						c.log.Error("telemetry write failed", "err", err)
-					}
-					lastWrite = now
-				}
-				c.mu.Lock()
-				c.latest = Epoch{Sats: sats, FixType: pending.FixType, NumSV: pending.NumSV}
-				c.lastAt = now
-				c.mu.Unlock()
+				c.record(time.Now(), sats, pending, &lastWrite)
 			case cls == 0x02 && id == 0x15: // RXM-RAWX
 				if leap, week, tow, ok := ParseRawxLeapSeconds(payload); ok {
 					c.mu.Lock()
@@ -143,6 +136,71 @@ func (c *Collector) Run(ctx context.Context, frames <-chan []byte) {
 			}
 		}
 	}
+}
+
+// record stores one epoch and publishes it to the dashboard. One row per
+// second at most; the satellite message arrives at 1 Hz but a burst after a
+// reconnect should not multiply rows.
+func (c *Collector) record(now time.Time, sats []Sat, pending Epoch, lastWrite *time.Time) {
+	if now.Sub(*lastWrite) >= time.Second {
+		c.mu.RLock()
+		signals := append([]Signal(nil), c.signals...)
+		c.mu.RUnlock()
+		if err := c.store.PutEpoch(now, sats, signals, pending.FixType); err != nil {
+			c.log.Error("telemetry write failed", "err", err)
+		}
+		*lastWrite = now
+	}
+	c.mu.Lock()
+	c.latest = Epoch{Sats: sats, FixType: pending.FixType, NumSV: pending.NumSV}
+	c.lastAt = now
+	c.mu.Unlock()
+}
+
+// unicore handles one Unicore binary frame. Other logs, and frames that fail to
+// decode, are ignored.
+func (c *Collector) unicore(b []byte, pending *Epoch, used *UsedSet, lastWrite *time.Time) {
+	switch binary.LittleEndian.Uint16(b[4:6]) {
+	case UnicoreSatsInfo:
+		sats, sigs, err := ParseSatsInfo(b)
+		if err != nil {
+			c.log.Debug("SATSINFO parse failed", "err", err)
+			return
+		}
+		MarkUsed(sats, sigs, *used)
+		c.mu.Lock()
+		c.signals = sigs
+		c.mu.Unlock()
+		c.unicoreTime(b)
+		pending.Sats = sats
+		c.record(time.Now(), sats, *pending, lastWrite)
+	case UnicoreBestSat:
+		if u, err := ParseBestSat(b); err != nil {
+			c.log.Debug("BESTSAT parse failed", "err", err)
+		} else {
+			*used = u
+		}
+	case UnicoreBestNav:
+		bn, err := ParseBestNav(b)
+		if err != nil {
+			c.log.Debug("BESTNAV parse failed", "err", err)
+			return
+		}
+		pending.FixType, pending.NumSV = bn.FixType, bn.NumSV
+		c.unicoreTime(b)
+	}
+}
+
+// unicoreTime takes the GPS time reference from a log header, as RXM-RAWX does
+// for u-blox: the epoch the log describes, with the leap-second count.
+func (c *Collector) unicoreTime(b []byte) {
+	h, _, err := SplitUnicore(b)
+	if err != nil || !h.Fine() {
+		return
+	}
+	c.mu.Lock()
+	c.leapSec, c.gpsWeek, c.gpsTOW, c.gpsAt = int8(h.LeapSec), h.Week, float64(h.MS)/1000, time.Now()
+	c.mu.Unlock()
 }
 
 func (c *Collector) maintain() {
