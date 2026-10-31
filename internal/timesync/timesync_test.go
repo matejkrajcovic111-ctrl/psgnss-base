@@ -1,12 +1,19 @@
 package timesync
 
 import (
+	"bytes"
 	"context"
 	"encoding/binary"
+	"io"
+	"log/slog"
 	"math"
 	"net"
+	"os"
 	"testing"
 	"time"
+
+	"github.com/psgnss/psgnss-base/internal/hub"
+	"github.com/psgnss/psgnss-base/internal/telemetry"
 )
 
 // navPVT builds a framed NAV-PVT message with the fields this package reads.
@@ -156,5 +163,128 @@ func TestDialChronyUsesADatagramSocket(t *testing.T) {
 	if c, err := net.DialTimeout("unix", path, time.Second); err == nil {
 		c.Close()
 		t.Error("a stream dial against a datagram socket succeeded; the test proves nothing")
+	}
+}
+
+// bestNavFrame loads the BESTNAVB fixture (a UM980 epoch with the position
+// replaced by fake values) and rewrites header fields, keeping the CRC valid.
+func bestNavFrame(t *testing.T, edit func(f []byte)) []byte {
+	t.Helper()
+	f, err := os.ReadFile("../telemetry/testdata/um980_bestnav.bin")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if edit != nil {
+		edit(f)
+	}
+	binary.LittleEndian.PutUint32(f[len(f)-4:], telemetry.UnicoreCRC32(f[:len(f)-4]))
+	return f
+}
+
+func TestParseBestNavTimeAddsTheOutputDelayToTheEpoch(t *testing.T) {
+	// Week 2442, ms 579556000, 18 leap seconds, 21 ms delay: the epoch is
+	// 2026-10-31 16:58:58 UTC and the log left the receiver 22 ms later.
+	got, ok := parseBestNavTime(bestNavFrame(t, nil))
+	if !ok || !got.resolved {
+		t.Fatalf("a FINE BESTNAVB was rejected: ok=%v resolved=%v", ok, got.resolved)
+	}
+	want := time.Date(2026, 10, 31, 16, 58, 58, 21_000_000, time.UTC)
+	if !got.utc.Equal(want) {
+		t.Errorf("time = %s, want %s", got.utc, want)
+	}
+	if got.accuracy != 0 {
+		t.Errorf("accuracy = %s; the header has none, so it must not trip MaxAccuracy", got.accuracy)
+	}
+}
+
+func TestParseBestNavTimeRejectsWhatTheReceiverDoesNotVouchFor(t *testing.T) {
+	cases := map[string]func(f []byte){
+		"time status UNKNOWN": func(f []byte) { f[9] = 20 },
+		"time status COARSE":  func(f []byte) { f[9] = 100 },
+		"reference time BDST": func(f []byte) { f[8] = 1 },
+		"week zero":           func(f []byte) { binary.LittleEndian.PutUint16(f[10:12], 0) },
+		"no leap seconds":     func(f []byte) { f[21] = 0 },
+	}
+	for name, edit := range cases {
+		got, ok := parseBestNavTime(bestNavFrame(t, edit))
+		if ok && got.resolved {
+			t.Errorf("%s was offered to chrony", name)
+		}
+	}
+	// Frames that are not a valid BESTNAVB at all are skipped silently.
+	if _, ok := parseBestNavTime(bestNavFrame(t, func(f []byte) { f[4] = 0x35 })); ok {
+		t.Error("a different Unicore log was accepted as BESTNAVB")
+	}
+	f := bestNavFrame(t, nil)
+	f[30] ^= 0xFF // data changed, CRC not
+	if _, ok := parseBestNavTime(f); ok {
+		t.Error("a frame with a bad CRC was accepted")
+	}
+}
+
+type frameSource struct{ data []byte }
+
+func (s frameSource) Open() (io.ReadCloser, error) { return io.NopCloser(bytes.NewReader(s.data)), nil }
+func (s frameSource) String() string               { return "test" }
+
+// A Unicore BESTNAVB travelling the whole path -- hub framing, subscription
+// filter, parser, chrony datagram -- produces one sample with the right offset;
+// the same stream with an unsolved time status produces none.
+func TestSenderOffersUnicoreTimeToChrony(t *testing.T) {
+	run := func(t *testing.T, frame []byte) (sample []byte, st Status) {
+		dir := t.TempDir()
+		path := dir + "/chrony.sock"
+		ln, err := net.ListenUnixgram("unixgram", &net.UnixAddr{Name: path, Net: "unixgram"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer ln.Close()
+		h, err := hub.New(hub.Options{Source: frameSource{frame}, RetryDelay: time.Hour})
+		if err != nil {
+			t.Fatal(err)
+		}
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		s := New(h, Options{Socket: path}, slog.New(slog.NewTextHandler(io.Discard, nil)))
+		go s.Run(ctx)
+		for i := 0; len(h.Subs()) == 0; i++ {
+			if i > 500 {
+				t.Fatal("the sender never subscribed")
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+		go h.Run(ctx)
+		ln.SetReadDeadline(time.Now().Add(1500 * time.Millisecond))
+		buf := make([]byte, 64)
+		n, err := ln.Read(buf)
+		if err == nil {
+			sample = buf[:n]
+		}
+		return sample, s.Status()
+	}
+
+	sample, st := run(t, bestNavFrame(t, nil))
+	if len(sample) != sampleSize {
+		t.Fatalf("chrony received %d bytes, want %d (status %+v)", len(sample), sampleSize, st)
+	}
+	if got := binary.LittleEndian.Uint32(sample[36:40]); got != chronySampleMagic {
+		t.Errorf("magic = %#x", got)
+	}
+	tv := time.Unix(int64(binary.LittleEndian.Uint64(sample[0:8])), int64(binary.LittleEndian.Uint64(sample[8:16]))*1000)
+	offset := math.Float64frombits(binary.LittleEndian.Uint64(sample[16:24]))
+	ref := time.Date(2026, 10, 31, 16, 58, 58, 21_000_000, time.UTC)
+	if math.Abs(ref.Sub(tv).Seconds()-offset) > 1e-5 {
+		t.Errorf("offset = %v, want reference minus local arrival time %v", offset, ref.Sub(tv).Seconds())
+	}
+	if st.Samples != 1 || st.State != "sending" {
+		t.Errorf("status = %+v", st)
+	}
+
+	sample, st = run(t, bestNavFrame(t, func(f []byte) { f[9] = 20 }))
+	if sample != nil {
+		t.Error("a sample was sent for a receiver whose time is not FINE")
+	}
+	if st.Rejected != 1 || st.Samples != 0 {
+		t.Errorf("status = %+v, want one rejection and no samples", st)
 	}
 }
