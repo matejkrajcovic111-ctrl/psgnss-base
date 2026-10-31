@@ -1,7 +1,9 @@
 // Package unicoretest simulates a Unicore UM980's ASCII command interface
 // closely enough to exercise PSGNSS's control path in tests. Its replies are
-// shaped like the live receiver's (firmware R4.10Build20739): "$command"
-// acknowledgements with NMEA checksums, "$CONFIG" lines and "#" logs.
+// byte-shaped like the live receiver's (firmware R4.10Build20739), because an
+// idealised fake once hid three bugs at once: "$" lines checksum the '$' too,
+// #MODE ends in a two-digit XOR that includes the '#', and #UNILOGLIST has no
+// checksum and ends in a blank line.
 package unicoretest
 
 import (
@@ -33,9 +35,6 @@ type Fake struct {
 	SavedMode string
 	// Reject lists command prefixes (upper case) the receiver refuses.
 	Reject map[string]bool
-	// HeightIsMSL makes MODE BASE treat its height as height above mean sea
-	// level instead of ellipsoidal, which BASEPOSA then exposes.
-	HeightIsMSL bool
 	// Undulation is the geoid undulation of the (fake) site.
 	Undulation float64
 	// Silent drops every command without answering.
@@ -122,6 +121,7 @@ func (p pipe) Write(b []byte) (int, error) {
 	return len(b), nil
 }
 
+// checksum XORs the whole line up to the star, its leading '$' or '#' included.
 func checksum(body string) string {
 	var x byte
 	for i := 0; i < len(body); i++ {
@@ -139,8 +139,8 @@ func (f *Fake) emit(s string) {
 }
 
 func (f *Fake) ack(cmd, status string) {
-	body := fmt.Sprintf("command,%s,response: %s", cmd, status)
-	f.emit(fmt.Sprintf("$%s*%s\r\n", body, checksum(body)))
+	body := fmt.Sprintf("$command,%s,response: %s", cmd, status)
+	f.emit(fmt.Sprintf("%s*%s\r\n", body, checksum(body)))
 }
 
 func (f *Fake) logOut(name, data string) {
@@ -190,11 +190,13 @@ func (f *Fake) handle(line string) {
 		}
 		sort.Strings(keys)
 		var b strings.Builder
+		b.WriteString("#UNILOGLIST,95,GPS,FINE,2442,582500000,20739,0,18,510;")
 		b.WriteString(fmt.Sprintf("\r\n<\t%d\r\n", len(keys)))
 		for _, k := range keys {
 			b.WriteString(fmt.Sprintf("<\t%s %s \r\n", k, f.Outputs[k]))
 		}
-		f.logOut("UNILOGLIST", strings.TrimSuffix(b.String(), "\r\n"))
+		b.WriteString("\r\n")
+		f.emit(b.String())
 	case "UNLOG":
 		f.ack(head, "OK")
 		switch len(t) {
@@ -235,8 +237,8 @@ func (f *Fake) config(line string, t []string) {
 	if len(t) == 1 {
 		f.ack("CONFIG", "OK")
 		for _, n := range f.Order {
-			body := fmt.Sprintf("CONFIG,%s,%s", n, f.Config[n])
-			f.emit(fmt.Sprintf("$%s*%s\r\n", body, checksum(body)))
+			body := fmt.Sprintf("$CONFIG,%s,%s", n, f.Config[n])
+			f.emit(fmt.Sprintf("%s*%s\r\n", body, checksum(body)))
 		}
 		return
 	}
@@ -254,8 +256,8 @@ func (f *Fake) mask(line string, t []string) {
 	f.ack("MASK", "OK")
 	if len(t) == 1 {
 		for _, m := range f.Masks {
-			body := "CONFIG,MASK," + m
-			f.emit(fmt.Sprintf("$%s*%s\r\n", body, checksum(body)))
+			body := "$CONFIG,MASK," + m
+			f.emit(fmt.Sprintf("%s*%s\r\n", body, checksum(body)))
 		}
 		return
 	}
@@ -275,21 +277,15 @@ func (f *Fake) mask(line string, t []string) {
 func (f *Fake) mode(line string, t []string) {
 	f.ack("MODE", "OK")
 	if len(t) == 1 {
-		f.logOut("MODE", f.ModeText+",")
+		body := fmt.Sprintf("#MODE,95,GPS,FINE,2442,582350000,20739,0,18,759;%s,", f.ModeText)
+		f.emit(fmt.Sprintf("%s*%s\r\n", body, checksum(body)))
 		return
 	}
 	f.ModeText = strings.Join(strings.Fields(line), " ")
 }
 
+// basepos answers as the live receiver does: the computed solution, whatever
+// MODE BASE was given.
 func (f *Fake) basepos() {
-	t := strings.Fields(f.ModeText)
-	if len(t) < 6 || t[1] != "BASE" || strings.EqualFold(t[3], "TIME") {
-		f.logOut("BASEPOSA", "INSUFFICIENT_OBS,NONE,0,0,0,0,WGS84,0,0,0,\"0\"")
-		return
-	}
-	h, _ := strconv.ParseFloat(t[5], 64)
-	if !f.HeightIsMSL {
-		h -= f.Undulation // ellipsoidal input: the log reports height above MSL
-	}
-	f.logOut("BASEPOSA", fmt.Sprintf("SOL_COMPUTED,SINGLE,%s,%s,%.4f,%.4f,WGS84,0.1,0.1,0.1,\"%s\"", t[3], t[4], h, f.Undulation, t[2]))
+	f.logOut("BASEPOSA", fmt.Sprintf("SOL_COMPUTED,SBAS,48.00000000000,17.00000000000,%.4f,%.4f,WGS84,0.6,0.4,0.8,\"123\"", 300-f.Undulation, f.Undulation))
 }

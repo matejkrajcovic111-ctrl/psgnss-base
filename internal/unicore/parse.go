@@ -17,8 +17,11 @@ func LogBody(log string) (name string, header []string, data string, err error) 
 	}
 	semi := strings.IndexByte(log, ';')
 	star := strings.LastIndexByte(log, '*')
-	if semi < 0 || star < semi {
+	if semi < 0 {
 		return "", nil, "", errors.New("log has no data section")
+	}
+	if star < semi {
+		star = len(log) // UNILOGLIST carries no checksum
 	}
 	hdr := strings.Split(log[1:semi], ",")
 	return hdr[0], hdr, log[semi+1 : star], nil
@@ -156,6 +159,8 @@ type Mode struct {
 	Role string `json:"role"`
 	ID   string `json:"id,omitempty"`
 	Kind string `json:"kind,omitempty"`
+	// ECEF means a fixed position's Lat, Lon and Height hold X, Y and Z.
+	ECEF bool `json:"ecef,omitempty"`
 	// TimeSeconds and Distance are the MODE BASE TIME parameters.
 	TimeSeconds string `json:"time_seconds,omitempty"`
 	Distance    string `json:"distance,omitempty"`
@@ -182,6 +187,13 @@ func ParseMode(r Reply) (Mode, error) {
 		return Mode{}, errors.New("no MODE answer in the reply")
 	}
 	return ParseModeText(raw), nil
+}
+
+// isECEF reports whether a MODE BASE first coordinate is ECEF X rather than a
+// latitude; the receiver tells them apart the same way (manual, MODE BASE).
+func isECEF(s string) bool {
+	v, err := strconv.ParseFloat(s, 64)
+	return err == nil && (v > 90 || v < -90)
 }
 
 func isNumber(s string) bool { _, err := strconv.ParseFloat(s, 64); return err == nil }
@@ -226,6 +238,7 @@ func ParseModeText(raw string) Mode {
 		case len(f) >= 4 && isNumber(f[1]) && isNumber(f[2]) && isNumber(f[3]):
 			m.ID, m.Lat, m.Lon, m.Height = f[0], f[1], f[2], f[3]
 			m.Kind = "fixed"
+			m.ECEF = isECEF(f[1])
 			norm = append(norm, f[:4]...)
 		case len(f) == 3 && isNumber(f[0]) && isNumber(f[1]) && isNumber(f[2]):
 			m.Lat, m.Lon, m.Height = f[0], f[1], f[2]
@@ -294,28 +307,6 @@ func ParseBestNav(r Reply) (Fix, error) {
 		v, err := strconv.ParseFloat(f[2+i], 64)
 		if err != nil {
 			return Fix{}, fmt.Errorf("BESTNAVA field %d: %w", 3+i, err)
-		}
-		*dst = v
-	}
-	return fx, nil
-}
-
-// ParseBasePos reads BASEPOSA: latitude, longitude, height above MSL and
-// undulation as the receiver stores the base position.
-func ParseBasePos(r Reply) (Fix, error) {
-	_, _, d, err := logNamed(r, "BASEPOSA")
-	if err != nil {
-		return Fix{}, err
-	}
-	f := strings.Split(strings.ReplaceAll(strings.TrimSpace(d), "\n", ""), ",")
-	if len(f) < 6 {
-		return Fix{}, errors.New("BASEPOSA is too short")
-	}
-	fx := Fix{SolStatus: f[0], PosType: f[1]}
-	for i, dst := range []*float64{&fx.Lat, &fx.Lon, &fx.Hgt, &fx.Und} {
-		v, err := strconv.ParseFloat(f[2+i], 64)
-		if err != nil {
-			return Fix{}, fmt.Errorf("BASEPOSA field %d: %w", 3+i, err)
 		}
 		*dst = v
 	}

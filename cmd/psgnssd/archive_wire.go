@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strconv"
 	"sync"
 	"time"
 
@@ -16,6 +17,24 @@ import (
 )
 
 // startArchives wires the archives to the hub and starts retention.
+// archiveMessageType resolves one archive message: a UBX name, or for an RTCM
+// archive the message number, which is how a receiver with its own RTCM
+// ephemeris keeps a nav archive.
+func archiveMessageType(proto hub.Proto, name string) (int, error) {
+	if proto == hub.ProtoRTCM3 {
+		t, err := strconv.Atoi(name)
+		if err != nil || t < 1 || t > 4095 {
+			return 0, fmt.Errorf("%q is not an RTCM message number", name)
+		}
+		return t, nil
+	}
+	t, err := hub.ParseUBXMessage(name)
+	if err != nil {
+		return 0, fmt.Errorf("%w (known: %v)", err, hub.UBXMessageNames())
+	}
+	return t, nil
+}
+
 func startArchives(ctx context.Context, cfg *config.Config, h *hub.Hub,
 	wg *sync.WaitGroup, log *slog.Logger) ([]*archive.Writer, error) {
 	if cfg.Archive.SyncEverySec > 0 {
@@ -58,10 +77,9 @@ func startArchives(ctx context.Context, cfg *config.Config, h *hub.Hub,
 		if len(s.set.Messages) > 0 {
 			specs := make([]hub.FilterSpec, 0, len(s.set.Messages))
 			for _, name := range s.set.Messages {
-				t, err := hub.ParseUBXMessage(name)
+				t, err := archiveMessageType(proto, name)
 				if err != nil {
-					return nil, fmt.Errorf("archive %s: %w (known: %v)",
-						s.name, err, hub.UBXMessageNames())
+					return nil, fmt.Errorf("archive %s: %w", s.name, err)
 				}
 				specs = append(specs, hub.FilterSpec{Type: t, Interval: 1})
 			}

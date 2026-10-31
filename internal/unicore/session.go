@@ -126,7 +126,9 @@ var (
 	// style one.
 	logEnd = regexp.MustCompile(`\*[0-9A-Fa-f]{2}(?:[0-9A-Fa-f]{6})?\r?\n`)
 	// Streaming NMEA data sentences ($GNGGA, ...) are not replies.
-	nmeaData = regexp.MustCompile(`^\$[A-Z]{2}[A-Z0-9]{3},`)
+	// A checksum-less log (UNILOGLIST) ends in a blank line.
+	blankLine = "\r\n\r\n"
+	nmeaData  = regexp.MustCompile(`^\$[A-Z]{2}[A-Z0-9]{3},`)
 	ackLine  = regexp.MustCompile(`^\$command,(.*),response: (.*?)\*[0-9A-Fa-f]{2}$`)
 )
 
@@ -141,12 +143,18 @@ func (s *Session) item() (string, bool) {
 		return "", false
 	}
 	if b[0] == '#' {
-		loc := logEnd.FindIndex(b)
-		if loc == nil {
+		end := -1
+		if loc := logEnd.FindIndex(b); loc != nil {
+			end = loc[1]
+		}
+		if i := strings.Index(string(b), blankLine); i >= 0 && (end < 0 || i+len(blankLine) < end) {
+			end = i + len(blankLine)
+		}
+		if end < 0 {
 			return "", false
 		}
-		it := string(b[:loc[1]])
-		s.pending = b[loc[1]:]
+		it := string(b[:end])
+		s.pending = b[end:]
 		return it, true
 	}
 	i := strings.IndexByte(string(b), '\n')
@@ -158,7 +166,9 @@ func (s *Session) item() (string, bool) {
 	return strings.TrimRight(it, "\r"), true
 }
 
-// nmeaChecksumOK verifies "$....*XX".
+// nmeaChecksumOK verifies "$....*XX". The receiver's own $command and $CONFIG
+// lines include the leading '$' in the XOR, unlike NMEA proper, so both forms
+// are accepted.
 func nmeaChecksumOK(line string) bool {
 	star := strings.LastIndexByte(line, '*')
 	if !strings.HasPrefix(line, "$") || star < 2 || len(line) < star+3 {
@@ -168,7 +178,8 @@ func nmeaChecksumOK(line string) bool {
 	for i := 1; i < star; i++ {
 		x ^= line[i]
 	}
-	return strings.EqualFold(fmt.Sprintf("%02X", x), line[star+1:star+3])
+	got := line[star+1 : star+3]
+	return strings.EqualFold(fmt.Sprintf("%02X", x), got) || strings.EqualFold(fmt.Sprintf("%02X", x^'$'), got)
 }
 
 // ackFor reports whether the acknowledged command is ours. The receiver

@@ -301,8 +301,8 @@ const displayVersion = value => {
 
 const PLOT_SYSTEMS = {
   GPS: { color:'#3fb950', short:'G' }, Galileo: { color:'#58a6ff', short:'E' },
-  BeiDou: { color:'#f85149', short:'B' }, SBAS: { color:'#f2cc60', short:'S' },
-  GLONASS: { color:'#ae8bea', short:'R' }, QZSS: { color:'#db61a2', short:'J' },
+  BeiDou: { color:'#f85149', short:'B' }, GLONASS: { color:'#ae8bea', short:'R' },
+  SBAS: { color:'#f2cc60', short:'S' }, QZSS: { color:'#db61a2', short:'J' },
   NavIC: { color:'#f0883e', short:'I' },
 };
 const plotKey = s => s.system + ':' + s.sv;
@@ -1973,7 +1973,9 @@ function UnicoreReceiver({ data, position, stationID, pending, setPending, err, 
     </div>` : null}
     ${data ? html`<div class="card settings-section"><h2>${t("Base mode")}</h2><div class="strip receiver-id">
       ${readout(t('Mode'), modeText)}${readout(t('Station ID'), m.id || '—')}
-      ${m.kind === 'fixed' ? html`${readout(t('Latitude'), m.lat)}${readout(t('Longitude'), m.lon)}${readout(t('Height'), m.height)}` : null}
+      ${m.kind === 'fixed' ? (m.ecef
+        ? html`${readout('ECEF X', m.lat)}${readout('ECEF Y', m.lon)}${readout('ECEF Z', m.height)}`
+        : html`${readout(t('Latitude'), m.lat)}${readout(t('Longitude'), m.lon)}${readout(t('Height'), m.height)}`) : null}
       ${m.kind === 'time' ? html`${readout(t('Survey time (s)'), m.time_seconds || '—')}${readout(t('Distance (m)'), m.distance || '—')}` : null}
     </div><p class="muted mono">${m.raw}</p></div>` : null}
     ${data && !pending ? html`<${StationID} value=${stationID} locked=${locked} onApplied=${setPending} onError=${setErr}/>` : null}

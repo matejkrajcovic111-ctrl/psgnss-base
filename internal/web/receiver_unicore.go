@@ -13,6 +13,7 @@ import (
 
 	"github.com/psgnss/psgnss-base/internal/boardprofile"
 	"github.com/psgnss/psgnss-base/internal/hub"
+	"github.com/psgnss/psgnss-base/internal/rtcm"
 	"github.com/psgnss/psgnss-base/internal/store"
 	"github.com/psgnss/psgnss-base/internal/unicore"
 )
@@ -309,22 +310,13 @@ func (s *Server) handleReceiverConsole(w http.ResponseWriter, r *http.Request) {
 
 const maxModeBaseDistance = 300.0 // metres; beyond it the receiver outputs no RTCM (manual, MODE BASE)
 
-// distanceMetres is the flat-earth distance, ample at the 300 m scale.
-func distanceMetres(lat1, lon1, lat2, lon2 float64) float64 {
-	dLat := (lat2 - lat1) * 111320
-	dLon := (lon2 - lon1) * 111320 * math.Cos((lat1+lat2)/2*math.Pi/180)
-	return math.Hypot(dLat, dLon)
-}
-
-// unicorePositionApply sends MODE BASE <id> <lat> <lon> <height>.
+// unicorePositionApply sends MODE BASE <id> <X> <Y> <Z>.
 //
-// The manual does not say whether the height is ellipsoidal or above mean sea
-// level (BASEPOS and BESTNAV report height above MSL plus the undulation). The
-// configured height is ellipsoidal, so the first attempt sends it as is and
-// reads BASEPOSA back: a receiver that took it as MSL reports exactly the
-// number it was given, and the command is then repeated with the height
-// converted using the undulation of the receiver's own solution
-// (ellipsoidal = MSL + undulation, as in BESTNAV).
+// The manual does not say whether the height in the latitude/longitude form is
+// ellipsoidal or above mean sea level, and BASEPOSA cannot settle it: on the
+// live receiver it keeps reporting the computed solution, not the set position.
+// ECEF has no such question, and the configured height is ellipsoidal, so the
+// conversion is the one the caster's 1006 uses.
 func (s *Server) unicorePositionApply(w http.ResponseWriter, r *http.Request, in positionInput) {
 	if err := checkPosition(in); err != nil {
 		writeErr(w, http.StatusBadRequest, err.Error())
@@ -333,7 +325,6 @@ func (s *Server) unicorePositionApply(w http.ResponseWriter, r *http.Request, in
 	lat, _ := strconv.ParseFloat(fmt.Sprintf("%.11f", in.Latitude), 64)
 	lon, _ := strconv.ParseFloat(fmt.Sprintf("%.11f", in.Longitude), 64)
 	h, _ := strconv.ParseFloat(fmt.Sprintf("%.4f", in.Height), 64)
-	actual := positionInput{Latitude: lat, Longitude: lon, Height: h}
 	next := *s.Cfg
 	next.Station.Position.Mode = "fixed"
 	next.Station.Position.Format = "llh"
@@ -347,49 +338,27 @@ func (s *Server) unicorePositionApply(w http.ResponseWriter, r *http.Request, in
 		writeErr(w, http.StatusBadRequest, "the Unicore base station ID is 0-4095")
 		return
 	}
-	cmd := func(height float64) string {
-		return fmt.Sprintf("MODE BASE %d %.11f %.11f %.4f", id, actual.Latitude, actual.Longitude, height)
-	}
-	extra := map[string]any{"height_reference": "unverified"}
-	var undulation float64
-	var haveUndulation bool
+	x, y, z := rtcm.LLHToECEF(lat, lon, h)
+	cmd := fmt.Sprintf("MODE BASE %d %.4f %.4f %.4f", id, x, y, z)
+	extra := map[string]any{}
 	old := *s.Cfg
-	s.beginUnicoreTxn(w, r, unicorePlan{cmds: []string{cmd(h)}, label: "Base position", note: "settings", extra: extra,
+	s.beginUnicoreTxn(w, r, unicorePlan{cmds: []string{cmd}, label: "Base position", note: "settings", extra: extra,
 		check: func(rx *unicore.Session) ([]string, int, string) {
 			rep, err := rx.Do("BESTNAVA")
 			if err == nil {
 				if fix, e := unicore.ParseBestNav(rep); e == nil && strings.HasPrefix(fix.SolStatus, "SOL_COMPUTED") {
-					d := distanceMetres(fix.Lat, fix.Lon, lat, lon)
+					fx, fy, fz := rtcm.LLHToECEF(fix.Lat, fix.Lon, fix.Hgt+fix.Und)
+					d := math.Sqrt((fx-x)*(fx-x) + (fy-y)*(fy-y) + (fz-z)*(fz-z))
 					extra["distance_m"] = math.Round(d*10) / 10
 					if d > maxModeBaseDistance {
 						return nil, http.StatusConflict, fmt.Sprintf("the position is %.0f m from the receiver's own solution; "+
 							"beyond %.0f m the receiver outputs no RTCM at all", d, maxModeBaseDistance)
 					}
-					undulation, haveUndulation = fix.Und, true
-					return []string{cmd(h)}, 0, ""
+					return []string{cmd}, 0, ""
 				}
 			}
 			s.Log.Warn("base position: receiver has no solution to compare with; the 300 m check was skipped")
-			return []string{cmd(h)}, 0, ""
-		},
-		post: func(rx *unicore.Session) ([]string, error) {
-			rep, err := rx.Do("BASEPOSA")
-			var bp unicore.Fix
-			if err == nil {
-				bp, err = unicore.ParseBasePos(rep)
-			}
-			if err != nil || !haveUndulation {
-				s.Log.Warn("base position: could not verify the height reference", "err", err, "undulation_known", haveUndulation)
-				return nil, nil
-			}
-			if math.Abs(bp.Hgt-h) < 0.05 && math.Abs(undulation) > 0.5 {
-				s.Log.Warn("receiver took the MODE BASE height as height above mean sea level; resending converted",
-					"undulation", undulation)
-				extra["height_reference"] = "msl-converted"
-				return []string{cmd(h - undulation)}, nil
-			}
-			extra["height_reference"] = "ellipsoidal"
-			return nil, nil
+			return []string{cmd}, 0, ""
 		},
 		hooks: receiverTxnHooks{
 			beforeCommit: func() error { return s.saveConfig(&next) },

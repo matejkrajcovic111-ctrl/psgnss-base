@@ -139,7 +139,8 @@ type ArchiveSet struct {
 	SwapHours  int    `toml:"swap_hours"`
 	SwapMargin int    `toml:"swap_margin"`
 	Filter     string `toml:"filter"`
-	// Messages narrows a UBX archive to specific message types by name, e.g.
+	// Messages narrows an RTCM archive by message number ("1019"), or a UBX
+	// archive to specific message types by name, e.g.
 	// ["RXM-SFRBX", "RXM-RAWX"] to record the complete RINEX NAV source. Empty
 	// means every message of the filtered protocol.
 	Messages []string `toml:"messages"`

@@ -99,6 +99,10 @@ func ParseProto(s string) (Proto, error) {
 	return ProtoUnknown, fmt.Errorf("unknown filter protocol %q", s)
 }
 
+// decimationTolerance stays well below the shortest interval (2 s) and below a
+// 1 Hz source's period, so it cannot change which epoch a 1 Hz stream emits.
+const decimationTolerance = 250 * time.Millisecond
+
 // Pass reports whether the frame should be forwarded. now is passed in rather
 // than read from the clock so decimation is testable.
 func (f *Filter) Pass(fr Frame, now time.Time) bool {
@@ -118,7 +122,10 @@ func (f *Filter) Pass(fr Frame, now time.Time) bool {
 	prev, seen := f.last[fr.Type]
 	// Decimate on a fixed grid relative to the last emission, so a 10 s
 	// interval stays on cadence rather than drifting by one epoch each time.
-	if seen && now.Sub(prev) < iv {
+	// The tolerance is for a source already at the interval: the UM980's 1230
+	// every 10 s arrives a few milliseconds either side, and a strict compare
+	// dropped every other one, measured as gaps of 10 and 20 s on the mount.
+	if seen && now.Sub(prev) < iv-decimationTolerance {
 		return false
 	}
 	f.last[fr.Type] = now

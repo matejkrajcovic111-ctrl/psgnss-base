@@ -3,6 +3,7 @@
 package hub
 
 import (
+	"bytes"
 	"encoding/binary"
 
 	"io"
@@ -290,9 +291,16 @@ func (s *Scanner) tryUnicore() (Frame, int, bool) {
 	return Frame{Proto: ProtoUnicore, Type: int(binary.LittleEndian.Uint16(w[4:6])), Raw: w[:total]}, total, false
 }
 
-// tryUnicoreText frames "#NAME,...*xxxxxxxx" plus its line ending. It gives up
-// at the first byte that cannot appear in an ASCII log, so a '#' that happens
-// to sit inside binary data costs one byte, not a stall.
+// tryUnicoreText frames a Unicore ASCII log plus its line ending. Measured on
+// firmware R4.10Build20739, these come in three shapes:
+//
+//   - "#NAME,...*xxxxxxxx": CRC32, as VERSIONA and BESTNAVA.
+//   - "#MODE,...*xx": a two-digit XOR of everything before the star, including
+//     the '#'.
+//   - "#UNILOGLIST,...;" then "<" rows and a blank line: no checksum at all.
+//
+// It gives up at the first byte that cannot appear in an ASCII log, so a '#'
+// that happens to sit inside binary data costs one byte, not a stall.
 func (s *Scanner) tryUnicoreText() (Frame, int, bool) {
 	w := s.buf[s.start:s.end]
 	// The log name: upper-case letters and digits, then a comma.
@@ -319,12 +327,34 @@ func (s *Scanner) tryUnicoreText() (Frame, int, bool) {
 		if c != '\t' && c != '\r' && c != '\n' && (c < 0x20 || c > 0x7E) {
 			return Frame{}, 0, false
 		}
+		if c == '\n' && unterminatedLogEnds(w[:i+1]) {
+			return Frame{Proto: ProtoUnicoreText, Raw: w[:i+1]}, i + 1, false
+		}
 	}
 	if star < 0 {
 		if len(w) >= maxUnicoreTextLen {
 			return Frame{}, 0, false
 		}
 		return Frame{}, 0, true
+	}
+	if len(w) < star+4 {
+		return Frame{}, 0, true
+	}
+	if w[star+3] == '\r' || w[star+3] == '\n' {
+		hi, okHi := hexNibble(w[star+1])
+		lo, okLo := hexNibble(w[star+2])
+		var x byte
+		for _, c := range w[:star] {
+			x ^= c
+		}
+		if !okHi || !okLo || hi<<4|lo != x {
+			return Frame{}, 0, false
+		}
+		end := star + 3
+		for end < len(w) && end < star+5 && (w[end] == '\r' || w[end] == '\n') {
+			end++
+		}
+		return Frame{Proto: ProtoUnicoreText, Raw: w[:end]}, end, false
 	}
 	end := star + 1 + 8
 	if len(w) < end {
@@ -347,6 +377,17 @@ func (s *Scanner) tryUnicoreText() (Frame, int, bool) {
 		end++
 	}
 	return Frame{Proto: ProtoUnicoreText, Raw: w[:end]}, end, false
+}
+
+// unterminatedLogEnds reports whether w, which ends in a line feed, is a whole
+// checksum-less log: a header line ending ';', "<" rows, then a blank line. The
+// shape is checked so a stray '#' in binary cannot pass as a log.
+func unterminatedLogEnds(w []byte) bool {
+	if !bytes.HasSuffix(w, []byte("\r\n\r\n")) {
+		return false
+	}
+	first := bytes.IndexByte(w, '\n')
+	return first >= 2 && first+1 < len(w) && w[first-2] == ';' && w[first+1] == '<'
 }
 
 func hexNibble(c byte) (byte, bool) {

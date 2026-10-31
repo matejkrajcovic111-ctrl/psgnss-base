@@ -1,6 +1,7 @@
 package web
 
 import (
+	"fmt"
 	"net/http"
 	"path/filepath"
 	"strings"
@@ -8,6 +9,7 @@ import (
 	"time"
 
 	"github.com/psgnss/psgnss-base/internal/config"
+	"github.com/psgnss/psgnss-base/internal/rtcm"
 	"github.com/psgnss/psgnss-base/internal/unicore/unicoretest"
 )
 
@@ -274,7 +276,7 @@ func TestUnicoreStationIDOutOfRangeIsRefused(t *testing.T) {
 	}
 }
 
-func TestUnicorePositionApplySendsModeBaseAndUpdatesConfigOnKeep(t *testing.T) {
+func TestUnicorePositionApplySendsECEFAndUpdatesConfigOnKeep(t *testing.T) {
 	f, fake := unicoreFixture(t)
 	req := []byte(`{"latitude":48.0001,"longitude":17.0001,"height":300.25}`)
 	rr := f.request(t, http.MethodPost, "/api/settings/position/apply", req)
@@ -282,10 +284,12 @@ func TestUnicorePositionApplySendsModeBaseAndUpdatesConfigOnKeep(t *testing.T) {
 		t.Fatalf("%d %s", rr.Code, rr.Body)
 	}
 	out := body(t, rr.Body)
-	if mode, _ := fake.State(); mode != "MODE BASE 1 48.00010000000 17.00010000000 300.2500" {
-		t.Fatalf("mode %q", mode)
+	x, y, z := rtcm.LLHToECEF(48.0001, 17.0001, 300.25)
+	want := fmt.Sprintf("MODE BASE 1 %.4f %.4f %.4f", x, y, z)
+	if mode, _ := fake.State(); mode != want {
+		t.Fatalf("mode %q, want %q", mode, want)
 	}
-	if out["height_reference"] != "ellipsoidal" || out["distance_m"].(float64) > 20 {
+	if out["distance_m"].(float64) > 20 {
 		t.Fatalf("response %+v", out)
 	}
 	if rr = f.request(t, http.MethodPost, "/api/receiver/commit", nil); rr.Code != http.StatusOK {
@@ -297,18 +301,16 @@ func TestUnicorePositionApplySendsModeBaseAndUpdatesConfigOnKeep(t *testing.T) {
 	}
 }
 
-func TestUnicorePositionApplyConvertsAnMSLHeight(t *testing.T) {
+func TestUnicorePositionFarInHeightIsRefused(t *testing.T) {
 	f, fake := unicoreFixture(t)
-	fake.HeightIsMSL = true
-	rr := f.request(t, http.MethodPost, "/api/settings/position/apply", []byte(`{"latitude":48.0001,"longitude":17.0001,"height":300}`))
-	if rr.Code != http.StatusOK {
+	rr := f.request(t, http.MethodPost, "/api/settings/position/apply", []byte(`{"latitude":48.0,"longitude":17.0,"height":1000}`))
+	if rr.Code != http.StatusConflict {
 		t.Fatalf("%d %s", rr.Code, rr.Body)
 	}
-	if mode, _ := fake.State(); !strings.HasSuffix(mode, " 257.0000") {
-		t.Fatalf("height not converted to MSL (300 - undulation 43): %q", mode)
-	}
-	if out := body(t, rr.Body); out["height_reference"] != "msl-converted" {
-		t.Fatalf("%+v", out)
+	for _, c := range fake.Commands() {
+		if strings.HasPrefix(c, "MODE BASE") {
+			t.Fatalf("sent %q", c)
+		}
 	}
 }
 

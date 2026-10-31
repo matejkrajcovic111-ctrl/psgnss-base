@@ -266,6 +266,14 @@ func BuildConfig(a Answers, paths Paths) (*config.Config, error) {
 		return nil, err
 	}
 	profile, _ := boardprofile.Lookup(a.ProfileID)
+	// RXM-SFRBX carries the broadcast ephemeris and RXM-RAWX supplies the
+	// receiver time RTKLIB needs to date those subframes. An SFRBX-only file
+	// looks valid and cannot be converted. A Unicore receiver has neither, and
+	// keeps its own RTCM ephemeris instead.
+	navFilter, navMessages := "ubx", []string{"RXM-SFRBX", "RXM-RAWX"}
+	if profile.Unicore() {
+		navFilter, navMessages = "rtcm3", []string{"1019", "1020", "1042", "1044", "1045", "1046"}
+	}
 
 	// GLONASS is absent on the X20P deliberately: its firmware reports
 	// GPS;GAL;BDS / SBAS;QZSS / NAVIC and emits nothing on 1084/1087 even with
@@ -341,13 +349,10 @@ func BuildConfig(a Answers, paths Paths) (*config.Config, error) {
 				Enabled: false, Pattern: "Base1_ubx_%Y%m%d%h00", Subdir: "UBX",
 				SwapHours: 24, SwapMargin: 30, Filter: "ubx",
 			},
-			// RXM-SFRBX carries the broadcast ephemeris and RXM-RAWX supplies
-			// the receiver time RTKLIB needs to date those subframes. An
-			// SFRBX-only file looks valid and cannot be converted.
 			Nav: config.ArchiveSet{
 				Enabled: true, Pattern: "Base1_nav_%Y%m%d%h00", Subdir: "NAV",
-				SwapHours: 24, SwapMargin: 30, Filter: "ubx",
-				Messages: []string{"RXM-SFRBX", "RXM-RAWX"},
+				SwapHours: 24, SwapMargin: 30, Filter: navFilter,
+				Messages: navMessages,
 			},
 		},
 		RINEX: config.RINEX{
