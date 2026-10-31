@@ -153,9 +153,12 @@ func bdsGEO(sv uint8) bool { return sv <= 5 || sv >= 59 }
 
 // sigID maps a Unicore frequency identifier (manual table "Frequency
 // Identifier", which is per system) to the u-blox sigId that UBX-NAV-SIG uses,
-// because the web UI labels bands from the u-blox numbers. Signals u-blox has no
-// id for (GPS L2P(Y) and L1C, GLONASS L3, QZSS L6, BeiDou B2b, SBAS L5) are
-// not mapped; they still count toward the satellite's aggregate C/N0.
+// because the web UI labels bands from the u-blox numbers. Signals with no
+// u-blox id here (GPS L2P(Y) and L1C, GLONASS L3, QZSS L6, BeiDou B1C, B2b and
+// the Q branches, SBAS L5, NavIC pilot) take ids from 32 up, which UBX-NAV-SIG
+// never uses, so the dashboard shows everything the receiver tracks and a
+// u-blox id is never borrowed for a different signal. BeiDou B1C once sat on 5,
+// which the UI names B3I D2.
 func sigID(gnss, sv, freq uint8) (uint8, bool) {
 	switch gnss {
 	case GPS:
@@ -168,10 +171,19 @@ func sigID(gnss, sv, freq uint8) (uint8, bool) {
 			return 6, true
 		case 14: // L5 pilot (Q)
 			return 7, true
+		case 3: // L1C pilot
+			return 32, true
+		case 11: // L1C data
+			return 33, true
+		case 9: // L2P(Y)
+			return 34, true
 		}
 	case SBAS:
-		if freq == 0 {
+		switch freq {
+		case 0: // L1 C/A
 			return 0, true
+		case 6: // L5 (I)
+			return 32, true
 		}
 	case Galileo:
 		switch freq {
@@ -200,10 +212,18 @@ func sigID(gnss, sv, freq uint8) (uint8, bool) {
 			return 2 + d2, true
 		case 21: // B3I
 			return 4 + d2, true
-		case 8, 23: // B1C pilot, data
-			return 5, true
 		case 12, 28: // B2a pilot, data
 			return 7, true
+		case 8, 23: // B1C pilot, data
+			return 32, true
+		case 13: // B2b (I)
+			return 33, true
+		case 4: // B1Q
+			return 34, true
+		case 5: // B2Q
+			return 35, true
+		case 6: // B3Q
+			return 36, true
 		}
 	case QZSS:
 		switch freq {
@@ -215,6 +235,12 @@ func sigID(gnss, sv, freq uint8) (uint8, bool) {
 			return 8, true
 		case 14: // L5 pilot (Q)
 			return 9, true
+		case 18, 22: // L61 data, pilot
+			return 32, true
+		case 24, 25: // L62 data
+			return 33, true
+		case 27: // L6E
+			return 34, true
 		}
 	case GLONASS:
 		switch freq {
@@ -222,10 +248,17 @@ func sigID(gnss, sv, freq uint8) (uint8, bool) {
 			return 0, true
 		case 5: // L2 OF
 			return 2, true
+		case 6: // G3 I
+			return 32, true
+		case 7: // G3 Q
+			return 33, true
 		}
 	case NavIC:
-		if freq == 6 { // L5 data
+		switch freq {
+		case 6: // L5 data
 			return 0, true
+		case 14: // L5 pilot
+			return 32, true
 		}
 	}
 	return 0, false

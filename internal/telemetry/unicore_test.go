@@ -61,14 +61,14 @@ func TestParseSatsInfoDecodesTheReceiversOwnEpoch(t *testing.T) {
 		cno      uint8
 		signals  map[uint8]uint8 // u-blox sigId -> C/N0
 	}{
-		// GPS 13: L1 C/A 47, L2C(L) 47, L5 pilot 50 (the best), L1C 47 and L2P 43 unmapped.
-		{"GPS 13", GPS, 13, 99, 50, 50, map[uint8]uint8{0: 47, 3: 47, 7: 50}},
-		// Unicore GLONASS PRN 48 is slot 11; L1 49, L2 47; the L3 record (44) is unmapped.
-		{"GLONASS slot 11", GLONASS, 11, 112, 31, 49, map[uint8]uint8{0: 49, 2: 47}},
-		// BeiDou 2 is a GEO satellite, so B1I and B3I are the D2 signals; B2b is unmapped.
-		{"BeiDou 2", BeiDou, 2, 112, 8, 40, map[uint8]uint8{1: 39, 5: 38}},
+		// GPS 13: L1 C/A 47, L2C(L) 47, L5 pilot 50 (the best), L1C 47, L2P 43.
+		{"GPS 13", GPS, 13, 99, 50, 50, map[uint8]uint8{0: 47, 3: 47, 7: 50, 32: 47, 34: 43}},
+		// Unicore GLONASS PRN 48 is slot 11; L1 49, L2 47, G3 Q 44.
+		{"GLONASS slot 11", GLONASS, 11, 112, 31, 49, map[uint8]uint8{0: 49, 2: 47, 33: 44}},
+		// BeiDou 2 is a GEO satellite, so B1I and B3I are the D2 signals; B2b 40 is the best.
+		{"BeiDou 2", BeiDou, 2, 112, 8, 40, map[uint8]uint8{1: 39, 5: 38, 33: 40}},
 		// BeiDou 13 is not GEO: D1 signals, B1C pilot 49, B2a pilot 49, B2b 52 is the best.
-		{"BeiDou 13", BeiDou, 13, 142, 67, 52, map[uint8]uint8{0: 52, 4: 52, 5: 49, 7: 49}},
+		{"BeiDou 13", BeiDou, 13, 142, 67, 52, map[uint8]uint8{0: 52, 4: 52, 7: 49, 32: 49, 33: 52}},
 		{"Galileo 30", Galileo, 30, 51, 78, 53, map[uint8]uint8{0: 48, 4: 50, 6: 52, 7: 53}},
 		{"SBAS 136", SBAS, 136, 196, 32, 44, map[uint8]uint8{0: 44}},
 		{"NavIC 2", NavIC, 2, 111, 46, 41, map[uint8]uint8{0: 41}},

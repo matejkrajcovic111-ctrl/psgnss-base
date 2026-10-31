@@ -551,10 +551,40 @@ func liveCoverage(sats []liveSat, signals []liveSignal) coverage.Range {
 	}
 	for _, sig := range signals {
 		if sig.CNO > 0 && sig.System != "SBAS" && sig.Band != "" {
-			bands[sig.Band] = true
+			bands[carrierOf(sig.Band)] = true
 		}
 	}
 	return coverage.Estimate(coverage.Capability{Constellations: len(systems), Bands: len(bands)})
+}
+
+// carrierOf names the carrier frequency a band label sits on, so "{n} bands"
+// counts frequencies rather than signals: L1 C/A, E1 and B1C are one carrier.
+// Each GLONASS band is its own, because FDMA keeps it off the CDMA frequencies.
+// A label not listed counts as its own carrier.
+func carrierOf(band string) string {
+	switch band {
+	case "L1 C/A", "L1S", "L1C P", "L1C D", "E1 C", "E1 B", "B1C":
+		return "1575.42"
+	case "B1I D1", "B1I D2", "B1Q":
+		return "1561.098"
+	case "L1 OF":
+		return "G1"
+	case "L2 CL", "L2 CM", "L2P":
+		return "1227.60"
+	case "L2 OF":
+		return "G2"
+	case "G3 I", "G3 Q":
+		return "G3"
+	case "L5 I", "L5 Q", "L5 A", "L5 pilot", "E5a I", "E5a Q", "B2a":
+		return "1176.45"
+	case "E5b I", "E5b Q", "B2I D1", "B2I D2", "B2b I", "B2Q":
+		return "1207.14"
+	case "B3I D1", "B3I D2", "B3Q":
+		return "1268.52"
+	case "E6 C", "E6 B", "L61", "L62", "L6E":
+		return "1278.75"
+	}
+	return band
 }
 
 // signalBand gives an operator-facing band label for the UBX-NAV-SIG signal
@@ -562,13 +592,14 @@ func liveCoverage(sats []liveSat, signals []liveSignal) coverage.Range {
 // identifiers are intentionally retained rather than guessed.
 func signalBand(gnss, sig uint8) string {
 	labels := map[uint8]map[uint8]string{
-		0: {0: "L1 C/A", 3: "L2 CL", 4: "L2 CM", 6: "L5 I", 7: "L5 Q"},
-		1: {0: "L1 C/A"},
+		0: {0: "L1 C/A", 3: "L2 CL", 4: "L2 CM", 6: "L5 I", 7: "L5 Q", 32: "L1C P", 33: "L1C D", 34: "L2P"},
+		1: {0: "L1 C/A", 32: "L5 I"},
 		2: {0: "E1 C", 1: "E1 B", 3: "E5a I", 4: "E5a Q", 5: "E5b I", 6: "E5b Q", 7: "E6 C", 8: "E6 B"},
-		3: {0: "B1I D1", 1: "B1I D2", 2: "B2I D1", 3: "B2I D2", 4: "B3I D1", 5: "B3I D2", 7: "B2a"},
-		5: {0: "L1 C/A", 1: "L1S", 4: "L2 CM", 5: "L2 CL", 8: "L5 I", 9: "L5 Q"},
-		6: {0: "L1 OF", 2: "L2 OF"},
-		7: {0: "L5 A"},
+		3: {0: "B1I D1", 1: "B1I D2", 2: "B2I D1", 3: "B2I D2", 4: "B3I D1", 5: "B3I D2", 7: "B2a",
+			32: "B1C", 33: "B2b I", 34: "B1Q", 35: "B2Q", 36: "B3Q"},
+		5: {0: "L1 C/A", 1: "L1S", 4: "L2 CM", 5: "L2 CL", 8: "L5 I", 9: "L5 Q", 32: "L61", 33: "L62", 34: "L6E"},
+		6: {0: "L1 OF", 2: "L2 OF", 32: "G3 I", 33: "G3 Q"},
+		7: {0: "L5 A", 32: "L5 pilot"},
 	}
 	if byID, ok := labels[gnss]; ok {
 		if label, ok := byID[sig]; ok {
