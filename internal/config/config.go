@@ -34,11 +34,15 @@ type Config struct {
 }
 
 type Station struct {
-	Name      string   `toml:"name"`
-	StationID uint16   `toml:"station_id"`
-	Antenna   string   `toml:"antenna"`
-	Receiver  string   `toml:"receiver"`
-	Position  Position `toml:"position"`
+	Name      string `toml:"name"`
+	StationID uint16 `toml:"station_id"`
+	Antenna   string `toml:"antenna"`
+	Receiver  string `toml:"receiver"`
+	// ReceiverFirmware and ReceiverSerial complete RTCM 1033 and the RINEX
+	// REC # / TYPE / VERS header line. Blank leaves the field empty.
+	ReceiverFirmware string   `toml:"receiver_firmware,omitempty"`
+	ReceiverSerial   string   `toml:"receiver_serial,omitempty"`
+	Position         Position `toml:"position"`
 }
 
 // Position is the broadcast base coordinate, authoritative for RTCM 1005/1006.
@@ -331,6 +335,24 @@ func lostAt(f int) string {
 func (c *Config) Validate() error {
 	var errs []error
 	add := func(f string, a ...any) { errs = append(errs, fmt.Errorf(f, a...)) }
+
+	// RTCM 1008/1033 carry each descriptor as at most 31 characters. A longer
+	// one would make the encoder refuse the message, and the caster would then
+	// quietly stop sending it.
+	for _, d := range []struct{ key, value string }{
+		{"station.antenna", c.Station.Antenna},
+		{"station.receiver", c.Station.Receiver},
+		{"station.receiver_firmware", c.Station.ReceiverFirmware},
+		{"station.receiver_serial", c.Station.ReceiverSerial},
+	} {
+		if len(d.value) > 31 {
+			add("%s is %d characters; RTCM allows at most 31", d.key, len(d.value))
+		}
+	}
+	// convbin takes the RINEX receiver header as serial/type/version.
+	if strings.Contains(c.Station.ReceiverFirmware+c.Station.ReceiverSerial, "/") {
+		add("station.receiver_firmware and station.receiver_serial cannot contain '/'")
+	}
 
 	if c.Receiver.Device == "" {
 		add("receiver.device is required")

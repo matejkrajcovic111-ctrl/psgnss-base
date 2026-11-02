@@ -93,11 +93,13 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"position": s.Cfg.Station.Position,
 		"station": map[string]any{"name": s.Cfg.Station.Name, "station_id": s.Cfg.Station.StationID,
-			"antenna": s.Cfg.Station.Antenna, "receiver": s.Cfg.Station.Receiver},
+			"antenna": s.Cfg.Station.Antenna, "receiver": s.Cfg.Station.Receiver,
+			"receiver_firmware": s.Cfg.Station.ReceiverFirmware, "receiver_serial": s.Cfg.Station.ReceiverSerial},
 		"mountpoints": mounts,
 		"general": map[string]any{
 			"station_name": s.Cfg.Station.Name,
 			"antenna":      s.Cfg.Station.Antenna, "receiver_description": s.Cfg.Station.Receiver,
+			"receiver_firmware": s.Cfg.Station.ReceiverFirmware, "receiver_serial": s.Cfg.Station.ReceiverSerial,
 			"caster_listen": s.Cfg.Caster.Listen, "proxy_listen": s.Cfg.Caster.ProxyListen,
 			"web_listen": s.Cfg.Web.Listen, "hub_listeners": s.Cfg.Hub.Listener,
 			"archive_mount": s.Cfg.Archive.MountPoint, "archive_spool": s.Cfg.Archive.SpoolDir,
@@ -122,9 +124,13 @@ type generalSettingsInput struct {
 	// StationID is accepted only for compatibility with dashboard pages that
 	// loaded the old Settings response before an upgrade. The guarded station
 	// ID endpoint remains the only path allowed to change it.
-	StationID                   *uint16           `json:"station_id,omitempty"`
-	Antenna                     string            `json:"antenna"`
-	ReceiverDescription         string            `json:"receiver_description"`
+	StationID           *uint16 `json:"station_id,omitempty"`
+	Antenna             string  `json:"antenna"`
+	ReceiverDescription string  `json:"receiver_description"`
+	// Pointers, so a page loaded before these fields existed leaves them alone
+	// instead of blanking them on save.
+	ReceiverFirmware            *string           `json:"receiver_firmware,omitempty"`
+	ReceiverSerial              *string           `json:"receiver_serial,omitempty"`
 	CasterListen                string            `json:"caster_listen"`
 	ProxyListen                 string            `json:"proxy_listen"`
 	WebListen                   string            `json:"web_listen"`
@@ -177,7 +183,14 @@ func (s *Server) handleSettingsGeneral(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 400, "station name and antenna descriptor are required")
 		return
 	}
-	if strings.ContainsAny(in.StationName+in.Antenna+in.ReceiverDescription, "\r\n") {
+	identity := in.StationName + in.Antenna + in.ReceiverDescription
+	if in.ReceiverFirmware != nil {
+		identity += *in.ReceiverFirmware
+	}
+	if in.ReceiverSerial != nil {
+		identity += *in.ReceiverSerial
+	}
+	if strings.ContainsAny(identity, "\r\n") {
 		writeErr(w, http.StatusBadRequest, "station identity fields cannot contain line breaks")
 		return
 	}
@@ -248,6 +261,12 @@ func (s *Server) handleSettingsGeneral(w http.ResponseWriter, r *http.Request) {
 	next.Station.Name = strings.TrimSpace(in.StationName)
 	next.Station.Antenna = strings.TrimSpace(in.Antenna)
 	next.Station.Receiver = strings.TrimSpace(in.ReceiverDescription)
+	if in.ReceiverFirmware != nil {
+		next.Station.ReceiverFirmware = strings.TrimSpace(*in.ReceiverFirmware)
+	}
+	if in.ReceiverSerial != nil {
+		next.Station.ReceiverSerial = strings.TrimSpace(*in.ReceiverSerial)
+	}
 	next.Caster.Listen = strings.TrimSpace(in.CasterListen)
 	next.Caster.ProxyListen = strings.TrimSpace(in.ProxyListen)
 	next.Web.Listen = strings.TrimSpace(in.WebListen)

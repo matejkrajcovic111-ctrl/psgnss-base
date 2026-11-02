@@ -1802,6 +1802,8 @@ function GeneralSettings({ settings }) {
       <div><label>${t("Station name")}</label><input class="form-control" value=${g.station_name} onChange=${e=>set('station_name',e.target.value)} required/></div>
       <div><label>${t("Antenna descriptor")}</label><input class="form-control mono" value=${g.antenna} onChange=${e=>set('antenna',e.target.value)} required/></div>
       <div><label>${t("Receiver descriptor")}</label><input class="form-control" value=${g.receiver_description} onChange=${e=>set('receiver_description',e.target.value)}/></div>
+      <div><label>${t("Receiver firmware")}</label><input class="form-control mono" value=${g.receiver_firmware||''} maxlength="31" onChange=${e=>set('receiver_firmware',e.target.value)}/></div>
+      <div><label>${t("Receiver serial number")}</label><input class="form-control mono" value=${g.receiver_serial||''} maxlength="31" onChange=${e=>set('receiver_serial',e.target.value)}/></div>
 	  <div><label>${t("Receiver board profile")}</label><select class="form-select" value=${g.receiver_profile||''} onChange=${e=>set('receiver_profile',e.target.value)}>
 		${profiles.map(p=>html`<option key=${p.id} value=${p.id} disabled=${!p.implemented}>${p.name} · ${p.receiver}${p.implemented?'':' ('+t('driver stub')+')'}</option>`)}</select></div>
 	  ${activeProfile?html`<div class="wide field-help board-profile-note"><strong>${activeProfile.vendor}</strong> · ${activeProfile.protocol} · ${activeProfile.form_factors.join(', ')}<br/>${activeProfile.note}</div>`:null}

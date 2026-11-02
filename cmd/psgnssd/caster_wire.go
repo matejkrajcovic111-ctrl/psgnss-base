@@ -46,6 +46,8 @@ func buildCaster(cfg *config.Config, h *hub.Hub, db *store.Store,
 		AntennaHeight:     pos.ENUOffset[2],
 		AntennaDescriptor: cfg.Station.Antenna,
 		ReceiverType:      cfg.Station.Receiver,
+		ReceiverFirmware:  cfg.Station.ReceiverFirmware,
+		ReceiverSerial:    cfg.Station.ReceiverSerial,
 		GPS:               true,
 		Galileo:           true,
 	}

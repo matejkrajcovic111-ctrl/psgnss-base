@@ -53,16 +53,19 @@ type Options struct {
 	// service reads the marker, antenna, receiver and approximate position
 	// from the file; without them a submission is anonymous and some services
 	// refuse it.
-	Marker    string
-	Antenna   string
-	Receiver  string
-	Comment   string
-	PositionX float64 // ECEF metres; zero means no -hp
-	PositionY float64
-	PositionZ float64
-	WorkDir   string
-	Timeout   time.Duration
-	Log       *slog.Logger
+	Marker   string
+	Antenna  string
+	Receiver string
+	// ReceiverFirmware and ReceiverSerial fill the rest of REC # / TYPE / VERS.
+	ReceiverFirmware string
+	ReceiverSerial   string
+	Comment          string
+	PositionX        float64 // ECEF metres; zero means no -hp
+	PositionY        float64
+	PositionZ        float64
+	WorkDir          string
+	Timeout          time.Duration
+	Log              *slog.Logger
 }
 
 type pending struct {
@@ -717,7 +720,11 @@ func (d *Downloader) headerArgs() []string {
 		args = append(args, "-ha", "0000/"+d.o.Antenna)
 	}
 	if d.o.Receiver != "" {
-		args = append(args, "-hr", "0000/"+d.o.Receiver)
+		serial := d.o.ReceiverSerial
+		if serial == "" {
+			serial = "0000"
+		}
+		args = append(args, "-hr", serial+"/"+d.o.Receiver+"/"+d.o.ReceiverFirmware)
 	}
 	if d.o.PositionX != 0 || d.o.PositionY != 0 || d.o.PositionZ != 0 {
 		args = append(args, "-hp", fmt.Sprintf("%.4f/%.4f/%.4f", d.o.PositionX, d.o.PositionY, d.o.PositionZ))

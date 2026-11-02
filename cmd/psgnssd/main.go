@@ -468,11 +468,13 @@ func run(cfgPath string, checkOnly bool) error {
 		// service reads these out of the file; without them a submission is
 		// anonymous. The position is the broadcast base coordinate in ECEF,
 		// the same one RTCM 1005 carries.
-		Marker:    cfg.Station.Name,
-		Antenna:   cfg.Station.Antenna,
-		Receiver:  cfg.Station.Receiver,
-		Comment:   "PSGNSS " + version.Version,
-		PositionX: ecefX, PositionY: ecefY, PositionZ: ecefZ,
+		Marker:           cfg.Station.Name,
+		Antenna:          cfg.Station.Antenna,
+		Receiver:         cfg.Station.Receiver,
+		ReceiverFirmware: cfg.Station.ReceiverFirmware,
+		ReceiverSerial:   cfg.Station.ReceiverSerial,
+		Comment:          "PSGNSS " + version.Version,
+		PositionX:        ecefX, PositionY: ecefY, PositionZ: ecefZ,
 		WorkDir: cfg.RINEX.OutputDir,
 		Log:     slog.Default(),
 	})

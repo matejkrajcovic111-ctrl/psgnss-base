@@ -22,7 +22,9 @@ wrong data without telling you.
 | `name` | Names the station in the UI, and by convention its mountpoints |
 | `station_id` | Has to match what the receiver stamps into its observations. Use 0 unless you're also writing `CFG-RTCM DF003`. A mismatch gives rovers a healthy stream they can never fix on |
 | `antenna` | Broadcast in RTCM 1008. Your surveyed coordinate was derived against a particular antenna, so changing this without re-surveying is a lie about the data |
-| `receiver` | Broadcast in RTCM 1033. Blank omits it |
+| `receiver` | Broadcast in RTCM 1033 and written to the RINEX header. Blank omits it |
+| `receiver_firmware` | Receiver firmware version, broadcast in RTCM 1033 and written to the RINEX header. On a UM980 it is the second field of `VERSIONA`. Optional |
+| `receiver_serial` | Receiver serial number, as above; the part after the `-` in `VERSIONA`'s fourth field. Optional |
 
 ### `[station.position]`
 

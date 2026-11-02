@@ -90,3 +90,42 @@ func TestReceiverProfileValidation(t *testing.T) {
 		t.Fatal("profile/model mismatch accepted")
 	}
 }
+
+func TestStationDescriptorValidation(t *testing.T) {
+	c := validTestConfig()
+	c.Station.Antenna = "AS-ANT3BCAL01   NONE"
+	c.Station.Receiver = "UNICORE UM980"
+	c.Station.ReceiverFirmware = "R4.10Build20739"
+	c.Station.ReceiverSerial = "MD22C5260607530"
+	if err := c.Validate(); err != nil {
+		t.Fatal(err)
+	}
+
+	c.Station.ReceiverSerial = "0123456789012345678901234567890X" // 32 characters
+	if err := c.Validate(); err == nil {
+		t.Fatal("a 32-character receiver serial was accepted; RTCM 1033 allows 31")
+	}
+
+	c = validTestConfig()
+	c.Station.ReceiverFirmware = "R4.10/Build"
+	if err := c.Validate(); err == nil {
+		t.Fatal("'/' accepted in receiver firmware; it would split the RINEX header field")
+	}
+}
+
+func TestReceiverFirmwareAndSerialSurviveSave(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "psgnss.toml")
+	want := validTestConfig()
+	want.Station.ReceiverFirmware = "R4.10Build20739"
+	want.Station.ReceiverSerial = "MD22C5260607530"
+	if err := Save(path, want); err != nil {
+		t.Fatal(err)
+	}
+	got, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Station.ReceiverFirmware != want.Station.ReceiverFirmware || got.Station.ReceiverSerial != want.Station.ReceiverSerial {
+		t.Fatalf("station = %+v", got.Station)
+	}
+}

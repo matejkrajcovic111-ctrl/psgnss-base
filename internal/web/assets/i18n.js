@@ -432,6 +432,8 @@ const SK = {
   "Receiver change failed": "Zmena prijímača zlyhala",
   "Receiver correction stream recorded without transcoding.": "Korekčný prúd prijímača zaznamenaný bez transkódovania.",
   "Receiver descriptor": "Popis prijímača",
+  "Receiver firmware": "Firmvér prijímača",
+  "Receiver serial number": "Sériové číslo prijímača",
   "Receiver feed": "Dáta z prijímača",
   "Receiver freshness": "Aktuálnosť prijímača",
   "Receiver time to chrony": "Čas prijímača pre chrony",
