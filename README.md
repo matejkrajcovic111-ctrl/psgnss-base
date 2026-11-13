@@ -2,9 +2,10 @@
 
 A GNSS base station in a single Go binary. It owns the receiver, serves RTK
 corrections over NTRIP, records the raw stream for post-processing, and gives
-you a web interface to watch it all from.
+you a web interface to watch it all from. It drives a u-blox ZED-X20P or a
+Unicore UM980.
 
-![The dashboard](docs/images/dashboard.png)
+![The dashboard: live skyplot, base position and per-band SNR](docs/images/dashboard.png)
 
 One process does everything, mostly because only one process can hold the
 serial port. Everything else hangs off that: the caster, the archives, the
@@ -30,7 +31,7 @@ Supported boards:
   simplertk4-optimum     ZED-X20P     full support
   simplertk2b            ZED-F9P      no driver yet
   simplertk3b-pro        mosaic-X5    no driver yet
-  simplertk3b-budget     UM980        no driver yet
+  simplertk3b-budget     UM980        full support
 
 Board [simplertk4-optimum]:
 Serial devices:
@@ -50,8 +51,7 @@ sudo ./psgnssd --setup --setup-dry-run   # just prints the plan
 ```
 
 You need Linux with systemd, arm64 or amd64, and a supported receiver on USB. A
-Raspberry Pi 4 has plenty of headroom; the daemon sits at around 0.35% of one
-core.
+Raspberry Pi 4 has plenty of headroom.
 
 One thing it doesn't install is `convbin` from RTKLIB, which is what turns raw
 logs into RINEX. Everything else works without it, and the installer says so at
@@ -69,29 +69,53 @@ connection is logged with the user, address, duration and byte count.
 same time, so serving both costs nothing and nothing gets re-encoded on the way
 out. What a rover receives is what the receiver produced.
 
-**Two archives.** The RTCM correction stream, and a navigation archive of
-`RXM-SFRBX` plus `RXM-RAWX` for RINEX. Both spool to local disk and get flushed
-to an SMB share continuously, so losing the share costs you disk space rather
-than data.
+![Mountpoints](docs/images/mountpoints.png)
+
+**Archives.** The RTCM correction stream is always kept. On a u-blox board
+there is also a navigation archive of `RXM-SFRBX` plus `RXM-RAWX`; a UM980 puts
+its own ephemeris in the RTCM stream, so that one file is enough. Everything
+spools to local disk first and is flushed to an SMB share continuously, so
+losing the share costs you disk space rather than data.
 
 **RINEX on demand,** over any date range including overnight spans and the
 current day, with presets for IGN, NRCan and the usual 1 s and 30 s services.
+Files from before and after a receiver swap convert in the same request.
 
-**Receiver configuration** over UBX, with read-back verification and an
-automatic revert. If a write isn't confirmed in time it rolls back by itself,
-so you can't take the stream down from the settings page by accident.
+![RINEX download](docs/images/rinex-download.png)
 
-**Ephemeris.** This receiver family can't emit RTCM 1019, 1042 or 1046 at all,
-so PSGNSS builds them from the raw navigation subframes instead.
+**Receiver configuration** with read-back verification: over UBX on the
+ZED-X20P, through the command console on the UM980. On the X20P a write that
+isn't confirmed in time rolls back by itself, so you can't take the stream down
+from the settings page by accident.
 
-**A web UI** with a live skyplot and per-band SNR, about a week of history you
-can scrub back through, plus users, mountpoints, receiver settings, diagnostics
-and file downloads. Single page, everything vendored, no CDN and no build step.
+**Ephemeris.** The ZED-X20P can't emit RTCM 1019, 1042 or 1046 at all, so
+PSGNSS builds them from the raw navigation subframes. The UM980 sends its own.
 
-There's also push-out to external casters, RTCM over UDP and serial, time to
-chrony without gpsd, and a position-integrity check that re-solves the antenna
-against a reference network and compares the answer with what you're
-broadcasting.
+**A web UI** in English and Slovak, with a live skyplot and per-band SNR, about
+a week of history you can scrub back through, the raw observations, plus users,
+mountpoints, receiver settings, diagnostics and file downloads. Single page,
+everything vendored, no CDN and no build step.
+
+**Position integrity.** Once a day the station re-solves its own antenna from
+its live observations against a reference network (any NTRIP network that
+covers the area, SKPOS in Slovakia) and compares the answer with the position
+it broadcasts. The result shows as pass or fail in the web UI.
+
+![Position integrity check](docs/images/position-integrity.png)
+
+There's also push-out to external casters, RTCM over UDP and serial, and time
+to chrony without gpsd.
+
+<table>
+<tr>
+<td><img src="docs/images/satellite-history.png" alt="Satellite visibility over time"></td>
+<td><img src="docs/images/raw-data.png" alt="Raw observations per satellite and signal"></td>
+</tr>
+<tr>
+<td><img src="docs/images/diagnostics.png" alt="Diagnostics"></td>
+<td><img src="docs/images/throughput-and-host.png" alt="Input throughput and host resources"></td>
+</tr>
+</table>
 
 ---
 
@@ -155,13 +179,26 @@ between.
 | Board | Receiver | State |
 |---|---|---|
 | ArduSimple simpleRTK4 Optimum | u-blox ZED-X20P | Full support |
+| ArduSimple simpleRTK3B Budget | Unicore UM980 | Full support, verified on firmware R4.10Build20739 |
 | ArduSimple simpleRTK2B | u-blox ZED-F9P | Profile only, no driver |
 | ArduSimple simpleRTK3B Pro | Septentrio mosaic-X5 | Profile only, no driver |
-| ArduSimple simpleRTK3B Budget | Unicore UM980 | Profile only, no driver |
 
-The three without drivers are declared but refused. The installer won't let you
+The two without drivers are declared but refused. The installer won't let you
 pick one, since PSGNSS couldn't configure or read that receiver and you'd end
 up with a station that doesn't work.
+
+The ZED-X20P doesn't track GLONASS; the UM980 does, which is why the reference
+station this was built for moved to it on 2026-10-31. What each board actually
+does, as measured, is in [docs/hardware-notes.md](docs/hardware-notes.md).
+
+---
+
+## In production
+
+PSGNSS runs the CORS station in Bošáca, Slovakia, which serves free RTK
+corrections at `rtk.zameriamto.sk:2305` (mountpoints `Bosaca_MSM4` and
+`Bosaca_MSM7`). Its web UI is public at
+[gnssbase.zameriamto.win](https://gnssbase.zameriamto.win).
 
 ---
 
@@ -186,6 +223,7 @@ cmd/psgnssd        the daemon and its command-line modes
 internal/hub       owns the serial port, demuxes, fans out
 internal/caster    NTRIP v1/v2, sourcetable, auth, accounting
 internal/receiver  UBX configuration with verification and auto-revert
+internal/unicore   UM980 command console, log decoding, settings writes
 internal/archive   spool, share, rotation, retention
 internal/web       API and the embedded single-page UI
 internal/setup     the first-run installer

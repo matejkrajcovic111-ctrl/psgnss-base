@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Unicore UM980 (simpleRTK3B Budget) support: the installer offers it,
+  telemetry and time sync from its logs, the Receiver page with a command
+  console and settings writes, and RINEX plus the integrity check from its
+  RTCM3 archive, which carries the receiver's own ephemeris. Verified on
+  firmware R4.10Build20739.
 - The interface is available in Slovak, switched from a button in the header.
   Messages written by the daemon itself stay English.
 - Archive sync heals a partial write on a soft SMB mount instead of appending
